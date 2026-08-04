@@ -17,7 +17,7 @@
 | トークン | 保存場所 | 理由 |
 |---|---|---|
 | アクセストークン | フロント側メモリ（Piniaストア）。APIリクエストの `Authorization: Bearer {token}` ヘッダーに付与 | 有効期限が短いため漏洩時の被害が限定的。ページリロードで失われるが、リフレッシュトークンから再取得すればよい |
-| リフレッシュトークン | **httpOnly + Secure + SameSite=Strict Cookie** | JavaScriptから読み取れないためXSS経由の窃取を防止。`/api/*/refresh` エンドポイントへのリクエスト時のみブラウザが自動送信する |
+| リフレッシュトークン | **httpOnly + Secure + SameSite=Strict Cookie**（`Path` 属性を `/api/staff/refresh` / `/api/guardian/refresh` にそれぞれ限定） | JavaScriptから読み取れないためXSS経由の窃取を防止。Cookieの`Path`属性を各guardのrefreshエンドポイントに絞ることで、それ以外のURLへのリクエストにはブラウザが送信しないようにする（`Path`属性はワイルドカード非対応・前方一致のため、guardごとに個別のCookieとして発行する） |
 
 アクセストークンをlocalStorage等に保存しない（XSSで即座に窃取されるため）。
 
