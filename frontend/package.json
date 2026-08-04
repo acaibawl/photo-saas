@@ -1,0 +1,22 @@
+{
+  "name": "app",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "nuxt build",
+    "dev": "nuxt dev",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare"
+  },
+  "dependencies": {
+    "@nuxt/eslint": "^1.16.0",
+    "@pinia/nuxt": "^1.0.1",
+    "@vee-validate/nuxt": "^4.15.1",
+    "eslint": "^10.8.0",
+    "nuxt": "^4.5.1",
+    "pinia": "^4.0.2",
+    "vue": "^3.5.40",
+    "vue-router": "^5.2.0"
+  }
+}
