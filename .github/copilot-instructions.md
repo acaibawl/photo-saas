@@ -7,6 +7,12 @@
 - このプロジェクトは保育園・幼稚園向け写真販売SaaSであり、園単位のマルチテナント、保護者招待、写真閲覧認可、購入権利管理が中核ドメインである
 - 過剰設計を避け、個人開発SaaSとして保守しやすい実装を優先する
 
+## 開発コマンド実行ルール
+
+- `npm` / `node` / `npx` などNode系コマンドは、必ず `node` コンテナ内で実行する
+- `php` / `composer` / `artisan` / `phpunit` などPHP系コマンドは、必ず `php` コンテナ内で実行する
+- ホストOSで直接実行せず、`docker compose exec node ...` / `docker compose exec php ...` を利用する
+
 ## 参照優先度
 
 - 全体要件: `docs/01_overview.md`
