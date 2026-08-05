@@ -6,6 +6,11 @@ This repository expects the local Nginx certificate at `containers/nginx/certs/p
 
 On macOS, generate them with `mkcert` so the certificate chains to a locally trusted development CA instead of a self-signed leaf certificate.
 
+Before any Docker build or run step, configure host name resolution so your browser can resolve local domains.
+
+- Add `frontend.local` and `backend.local` to `/etc/hosts` (or your local DNS) and map both to `127.0.0.1`.
+- Treat `photo-saas.local` as a separate domain. If you need to access it directly in a browser, add its own mapping separately.
+
 ```bash
 brew install mkcert nss
 mkcert -install
