@@ -2,5 +2,10 @@
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
   devtools: { enabled: true },
-  modules: ['@nuxt/eslint', '@vee-validate/nuxt', '@pinia/nuxt']
+  modules: ['@nuxt/eslint', '@vee-validate/nuxt', '@pinia/nuxt'],
+  vite: {
+    server: {
+      allowedHosts: ['frontend.local']
+    }
+  }
 })
