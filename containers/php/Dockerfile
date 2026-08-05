@@ -28,7 +28,6 @@ RUN apt-get update \
         pcntl \
         pdo_pgsql \
         zip \
-    && docker-php-ext-enable opcache \
     && pecl install redis \
     && docker-php-ext-enable redis \
     && rm -rf /var/lib/apt/lists/*

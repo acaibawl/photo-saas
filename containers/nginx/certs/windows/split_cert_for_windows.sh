@@ -1,0 +1,2 @@
+# photo-saas.local.crtはサーバー証明書とCA証明書が連結されているファイルから、CA証明書を分割する
+awk '/-----BEGIN CERTIFICATE-----/{n++} n==2' containers/nginx/certs/photo-saas.local.crt > containers/nginx/certs/windows/mkcert-rootCA.crt
