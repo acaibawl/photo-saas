@@ -46,6 +46,13 @@
 - アップロード受付時はファイルを一時保存し、DBには `upload_request` / `upload_job` のような状態管理レコードを残す。
 - 画像変換・プレビュー生成・メタデータ登録はキューで実行する。
 - 失敗時は再試行可能なジョブとして扱い、ユーザーに進捗/失敗状態を通知する。
+- キュー再試行は最大3回までとし、再試行しても同一ファイルが重複登録されないように冪等性を保証する。
+- ファイル単位では `kindergarten_id` + `upload_request_id` + 入力ファイルの決定的ハッシュ（例: SHA-256）から決定する `file_key` を採用し、同一入力の再実行では同じ `file_key` を再利用する。
+- DB制約は `upload_requests(kindergarten_id, upload_request_id)`、`upload_jobs(file_key)`、`photos(file_key)`、`photo_child_tags(photo_id, child_id)` の一意制約で重複作成を防ぐ。
+- 状態遷移は `accepted -> processing -> previewing -> metadata_persisted -> completed` を正とし、`failed` / `retrying` からのみ再実行可能とする。`completed` は再実行不可。
+- 再試行時は既存の `file_key` に紐づく成果物を再利用し、既に保存済みのオブジェクトがあればそのまま使う。プレビュー生成済みの場合は再生成せず、メタデータ未登録のみ補完する。
+- 途中失敗でストレージオブジェクトやDBレコードが部分的に残った場合は、次回再試行時にそれらを検出して再利用または安全に置換し、孤立レコード・未参照オブジェクトは後処理ジョブで回収する。
+- 同一ファイルの重複受付は `upload_request` 単位で吸収し、同じ `file_key` の再投入は既存ジョブを進行中または完了済みとして扱う。
 
 ## 1) アルバム作成
 

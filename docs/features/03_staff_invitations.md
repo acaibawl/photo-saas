@@ -120,7 +120,7 @@
 
 | フィールド | 場所 | 型 | 必須 | バリデーション |
 |---|---|---|---|---|
-| invitation_id | path | string(ULID) | 必須 | 元招待が自園に属すること |
+| invitation_id | path | string(ULID) | 必須 | 元招待が自園に属すること、かつ `used_at` / `revoked_at` が未設定で再発行可能であること |
 | label | body | string | 任意 | max:50, 省略時は元招待のlabel |
 | expires_in_days | body | integer | 任意 | min:1, max:365 |
 
@@ -131,6 +131,15 @@
 | invitation_id | string(ULID) |
 | invite_url | string(url) |
 | token_expires_at | string(datetime) |
+
+### ドメイン制約
+
+- 元招待が `used_at` 設定済み、または `revoked_at` 設定済みの場合は再発行しない（`409`）。
+- 再発行時は旧招待の `token_hash` を保持したまま、旧招待の `revoked_at` を新招待発行と同一トランザクションで更新し、旧トークンを直ちに無効化する。
+- 新招待は新しい生トークンと新しい `token_hash` を持ち、旧招待とは独立したレコードとして発行する。
+- 再発行済みの旧招待は以後使用不可とし、同一招待チェーンとして再利用させない。
+- 再発行回数は元招待ごとに最大3回までとし、上限超過時は拒否する。
+- 旧招待の失効と新招待の発行は分離せず、片方でも失敗した場合は全体をロールバックする。
 
 ## 共通エラー
 

@@ -32,10 +32,8 @@
 | data[].album_id | string(ULID) |
 | data[].title | string |
 | data[].event_date | string(date) |
-| data[].child_id | string(ULID) or null |
-| data[].child_name | string or null |
 
-フロントでは `album_id` と `title` をプルダウンの選択肢として利用し、`child_id` は必要に応じて絞り込み元の補助情報として参照する。
+フロントでは `album_id` と `title` をプルダウンの選択肢として利用する。
 
 ### 認可要件
 

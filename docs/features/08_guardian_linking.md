@@ -36,6 +36,9 @@
 
 - 同一 `(guardian_id, child_id)` に有効行がある場合は重複作成せず `409`。
 - 招待消費は `guardian_child` 追加と同一トランザクションで実施。
+- `raw_token` が指す招待行は `SELECT ... FOR UPDATE` でロックし、同一トランザクション内で `used_at` / `revoked_at` / `expires_at` を再検証してから消費する。
+- `used_at` は `409 INVITATION_ALREADY_USED` として扱い、`revoked_at` / `expires_at` は従来どおり `403 INVITATION_INVALID_OR_EXPIRED` のまま維持する。
+- 条件付き消費更新を採用する場合は、`token_hash` に対する一意制約を前提に `used_at IS NULL` かつ `revoked_at IS NULL` かつ `expires_at > now()` を満たす場合のみ更新し、更新件数0件なら再読込して状態別に 409/403 を返す。
 
 ## 2) 紐づけ園児一覧（現在有効な紐づけのみ）
 
@@ -65,6 +68,7 @@
 | HTTP | code | 条件 |
 |---|---|---|
 | 401 | GUARDIAN_AUTH_REQUIRED | 未認証 |
-| 403 | INVITATION_INVALID_OR_EXPIRED | 招待無効 |
+| 403 | INVITATION_INVALID_OR_EXPIRED | `revoked_at` / `expires_at` による招待無効 |
+| 409 | INVITATION_ALREADY_USED | `used_at` による使用済み招待 |
 | 409 | GUARDIAN_CHILD_LINK_ALREADY_EXISTS | 重複紐づけ |
 | 422 | VALIDATION_ERROR | 入力不正 |

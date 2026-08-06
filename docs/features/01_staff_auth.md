@@ -26,6 +26,14 @@
 | email | body | string | 必須 | email形式, max:255 |
 | password | body | string | 必須 | min:8, max:72 |
 
+### レート制限 / アカウント保護
+
+- 現時点では共通 middleware のログイン専用制限は未実装のため、`POST /staff/auth/login` に個別制限を適用する。
+- login単位（`email` 正規化値 + 送信元IP）: 1分あたり5回まで。超過時は `429` を返す。
+- 送信元単位（IP）: 1分あたり30回まで。超過時は `429` を返す。
+- 連続失敗時は段階的遅延を適用する（例: 失敗6回目以降は `2^n` 秒、上限60秒）。
+- 成功ログイン時は当該login単位の失敗カウンタと遅延状態をリセットする。
+
 ### Output（200）
 
 | フィールド | 型 | 説明 |
@@ -110,4 +118,5 @@
 | 401 | STAFF_AUTH_REFRESH_INVALID | refresh token不正/期限切れ |
 | 401 | STAFF_AUTH_REFRESH_REUSE_DETECTED | 再利用検知 |
 | 403 | STAFF_AUTH_FORBIDDEN | guard不一致 |
+| 429 | STAFF_AUTH_RATE_LIMITED | ログイン試行回数超過 |
 | 422 | VALIDATION_ERROR | 入力不正 |

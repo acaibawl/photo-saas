@@ -117,8 +117,20 @@
 
 ### ドメイン制約
 
-- 推奨遷移: `enrolled -> graduated` または `enrolled -> withdrawn`。
-- 卒園/退園後の復帰は原則許可しない（要件変更時のみ別APIで対応）。
+| 現在status | 更新後status | 可否 | 扱い |
+|---|---|---|---|
+| enrolled | graduated | 可 | 在籍終了として保存する |
+| enrolled | withdrawn | 可 | 退園として保存する |
+| enrolled | enrolled | 可 | 同一status更新として no-op で受理する |
+| graduated | graduated | 可 | 同一status更新として no-op で受理する |
+| withdrawn | withdrawn | 可 | 同一status更新として no-op で受理する |
+| graduated | enrolled | 不可 | `409 CHILD_STATUS_TRANSITION_NOT_ALLOWED` |
+| withdrawn | enrolled | 不可 | `409 CHILD_STATUS_TRANSITION_NOT_ALLOWED` |
+| graduated | withdrawn | 不可 | `409 CHILD_STATUS_TRANSITION_NOT_ALLOWED` |
+| withdrawn | graduated | 不可 | `409 CHILD_STATUS_TRANSITION_NOT_ALLOWED` |
+
+- 卒園・退園後に再度「在園中」として扱いたい場合は、この status 更新APIではなく別の新規登録/再登録手段を用いる。
+- 禁止遷移は必ず `CHILD_STATUS_TRANSITION_NOT_ALLOWED` として扱い、実装は在籍状態の保存ルールを一貫させる。
 
 ### Output（200）
 

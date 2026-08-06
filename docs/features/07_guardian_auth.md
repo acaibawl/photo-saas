@@ -40,7 +40,8 @@
 
 ### ドメイン制約
 
-- `used_at`, `revoked_at`, `expires_at` を検証し、無効時は `403`。
+- `used_at` は `409 INVITATION_ALREADY_USED` として扱う。
+- `revoked_at`, `expires_at` は従来どおり無効招待として扱い、既存のエラー契約を維持する。
 
 ## 2) 招待受諾（新規登録）
 
@@ -71,6 +72,14 @@
 - `SELECT ... FOR UPDATE` で招待行ロック。
 - `guardians` 作成、`guardian_child` 作成、`used_at` 更新を同一トランザクションで実行。
 - 受諾後の紐づけはその時点で有効なものとして扱い、以後の一覧は `GET /guardian/children` で現在有効な紐づけのみ返す。
+
+### 招待状態のエラー契約
+
+| 状態 | HTTP | code | 扱い |
+|---|---|---|---|
+| `used_at` 設定済み | 409 | `INVITATION_ALREADY_USED` | 使用済み招待として拒否 |
+| `revoked_at` 設定済み | 403 | `INVITATION_INVALID_OR_EXPIRED` | 無効招待として拒否 |
+| `expires_at` 超過 | 403 | `INVITATION_INVALID_OR_EXPIRED` | 期限切れ招待として拒否 |
 
 ## 3) 保護者ログイン
 
@@ -144,8 +153,8 @@
 
 | HTTP | code | 条件 |
 |---|---|---|
-| 403 | INVITATION_INVALID_OR_EXPIRED | 招待が無効 |
-| 409 | INVITATION_ALREADY_USED | 使用済み |
+| 403 | INVITATION_INVALID_OR_EXPIRED | `revoked_at` / `expires_at` による招待無効 |
+| 409 | INVITATION_ALREADY_USED | `used_at` による使用済み招待 |
 | 409 | GUARDIAN_EMAIL_ALREADY_EXISTS | 既存メール |
 | 422 | VALIDATION_ERROR | 入力不正 |
 | 429 | RATE_LIMITED | 招待確認/受諾の試行過多 |
