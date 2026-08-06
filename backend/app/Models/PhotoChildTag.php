@@ -3,9 +3,11 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Attributes\Table;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\Concerns\AsPivot;
 use Illuminate\Support\Carbon;
 
 /**
@@ -28,10 +30,11 @@ use Illuminate\Support\Carbon;
  *
  * @mixin \Eloquent
  */
+#[Table(name: 'photo_child_tags')]
 #[Fillable(['photo_id', 'child_id'])]
 class PhotoChildTag extends Model
 {
-    use HasUlids;
+    use AsPivot, HasUlids;
 
     public function photo(): BelongsTo
     {

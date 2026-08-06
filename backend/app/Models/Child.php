@@ -69,6 +69,8 @@ class Child extends Model
 
     public function photos(): BelongsToMany
     {
-        return $this->belongsToMany(Photo::class, 'photo_child_tags');
+        // using()を指定することでattach()/sync()がPhotoChildTagモデルのsave()を経由し、
+        // HasUlidsによる主キー生成が効くようにする(素のpivot insertだとid列がNOT NULL違反になる)
+        return $this->belongsToMany(Photo::class, 'photo_child_tags')->using(PhotoChildTag::class);
     }
 }
