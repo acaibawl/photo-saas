@@ -1,0 +1,84 @@
+name: Backend Test
+
+on:
+  pull_request:
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend-test.yml'
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend-test.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  backend-test:
+    runs-on: ubuntu-26.04
+    defaults:
+      run:
+        working-directory: backend
+
+    services:
+      postgresql:
+        image: postgres:15-bookworm
+        env:
+          POSTGRES_DB: photo_saas_testing
+          POSTGRES_USER: photo_saas
+          POSTGRES_PASSWORD: photo_saas
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U photo_saas -d photo_saas_testing"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DB_CONNECTION: pgsql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+      DB_DATABASE: photo_saas_testing
+      DB_USERNAME: photo_saas
+      DB_PASSWORD: photo_saas
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          extensions: mbstring, pdo_pgsql, fileinfo, zip, intl, bcmath, gd, exif, redis
+          coverage: none
+          tools: composer:v2
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            backend/vendor
+            ~/.composer/cache
+          key: ${{ runner.os }}-backend-composer-${{ hashFiles('backend/composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-backend-composer-
+
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Prepare environment file
+        run: cp .env.example .env
+
+      - name: Generate application key
+        run: php artisan key:generate --ansi
+
+      - name: Enable pgcrypto extension
+        run: PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -U $DB_USERNAME -d $DB_DATABASE -c "CREATE EXTENSION IF NOT EXISTS pgcrypto;"
+
+      - name: Run tests
+        run: composer test
