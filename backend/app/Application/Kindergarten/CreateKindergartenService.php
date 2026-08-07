@@ -26,7 +26,7 @@ final class CreateKindergartenService
     {
         [$kindergarten, $owner, $invitation, $token] = DB::transaction(function () use ($input) {
             if (KindergartenStaff::where('email_normalized', $input->ownerEmail->normalized())->exists()) {
-                throw new OwnerEmailAlreadyExistsException($input->ownerEmail->value());
+                throw new OwnerEmailAlreadyExistsException;
             }
 
             $kindergarten = Kindergarten::create([
