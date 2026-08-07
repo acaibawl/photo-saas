@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Domain\Staff\StaffRole;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
@@ -15,7 +16,7 @@ use Illuminate\Support\Carbon;
  * @property string $name
  * @property string $email
  * @property string $email_normalized
- * @property string $role
+ * @property StaffRole $role
  * @property string $token_hash
  * @property Carbon $expires_at
  * @property Carbon|null $accepted_at
@@ -60,6 +61,7 @@ class StaffInvitation extends Model
     protected function casts(): array
     {
         return [
+            'role' => StaffRole::class,
             'expires_at' => 'datetime',
             'accepted_at' => 'datetime',
             'revoked_at' => 'datetime',

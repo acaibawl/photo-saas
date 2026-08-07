@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Domain\Staff\StaffRole;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Attributes\Table;
@@ -24,7 +25,7 @@ use Tymon\JWTAuth\Contracts\JWTSubject;
  * @property string $email
  * @property string $email_normalized
  * @property string $password_hash
- * @property string $role
+ * @property StaffRole $role
  * @property Carbon|null $last_login_at
  * @property Carbon|null $invited_at
  * @property Carbon|null $joined_at
@@ -80,6 +81,7 @@ class KindergartenStaff extends Authenticatable implements JWTSubject
     protected function casts(): array
     {
         return [
+            'role' => StaffRole::class,
             'last_login_at' => 'datetime',
             'invited_at' => 'datetime',
             'joined_at' => 'datetime',
