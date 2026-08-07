@@ -8,9 +8,11 @@
     "require": {
         "php": "^8.3",
         "laravel/framework": "^13.8",
-        "laravel/tinker": "^3.0"
+        "laravel/tinker": "^3.0",
+        "tymon/jwt-auth": "^2.3"
     },
     "require-dev": {
+        "barryvdh/laravel-ide-helper": "^3.7",
         "fakerphp/faker": "^1.23",
         "larastan/larastan": "^3.0",
         "laravel/pail": "^1.2.5",
@@ -67,6 +69,15 @@
         ],
         "pre-package-uninstall": [
             "Illuminate\\Foundation\\ComposerScripts::prePackageUninstall"
+        ],
+        "analyse": [
+            "./vendor/bin/phpstan analyse --memory-limit=1G"
+        ],
+        "lint": [
+            "./vendor/bin/pint --test -v"
+        ],
+        "helper:models": [
+            "php artisan ide-helper:models --write --reset"
         ]
     },
     "extra": {
