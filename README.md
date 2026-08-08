@@ -22,3 +22,34 @@ Run `mkcert -install` once from an interactive terminal. It may ask for your mac
 `generate-cert.sh` then issues a certificate for `frontend.local` and `backend.local` using that trusted local CA.
 
 If you have an older self-signed certificate in Keychain Access, remove it before retrying so the browser only sees the `mkcert`-signed certificate.
+
+## DB migration
+
+```bash
+docker compose run --rm backend php artisan migrate:fresh --seed
+```
+
+テスト用
+
+```bash
+docker compose run --rm backend php artisan migrate:fresh --seed --env=testing
+```
+
+## ide-helper用意
+
+```bash
+docker compose run --rm backend php artisan ide-helper:generate
+docker compose run --rm backend php artisan ide-helper:meta
+```
+
+### モデルの更新
+
+```bash
+docker compose run --rm backend php artisan ide-helper:models --write --reset
+```
+
+## テスト実行
+
+```bash
+docker compose run --rm backend php artisan test
+```
