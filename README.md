@@ -53,3 +53,11 @@ docker compose run --rm backend php artisan ide-helper:models --write --reset
 ```bash
 docker compose run --rm backend php artisan test
 ```
+
+## Laravel Boost実行
+
+phpコンテナで実行
+
+```bash
+php artisan boost:mcp
+```
