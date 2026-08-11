@@ -13,7 +13,7 @@ use App\Http\Requests\Staff\RefreshStaffRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
-final class AuthController extends Controller
+class AuthController extends Controller
 {
     public function login(LoginStaffRequest $request, StaffAuthService $service): JsonResponse
     {
@@ -93,15 +93,22 @@ final class AuthController extends Controller
             ], 403);
         }
 
+        $allSessions = $request->boolean('all_sessions', false);
         $refreshToken = $this->resolveRefreshToken($request);
 
-        if ($refreshToken === null && ! $request->boolean('all_sessions', false)) {
-            $refreshToken = $request->header('X-Refresh-Token');
+        if (! $allSessions && ($refreshToken === null || trim($refreshToken) === '')) {
+            return response()->json([
+                'message' => 'Validation failed',
+                'code' => 'VALIDATION_ERROR',
+                'errors' => [
+                    'refresh_token' => ['validation.required'],
+                ],
+            ], 422);
         }
 
         $revokedCount = $service->logout(
             $staff,
-            $request->boolean('all_sessions', false),
+            $allSessions,
             $refreshToken,
         );
 

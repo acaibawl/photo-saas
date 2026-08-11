@@ -12,6 +12,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use Tymon\JWTAuth\Facades\JWTAuth;
 
@@ -117,8 +118,6 @@ final class StaffAuthService
         if (! $allSessions) {
             if ($refreshTokenValue !== null && trim($refreshTokenValue) !== '') {
                 $query->where('token_hash', hash('sha256', trim($refreshTokenValue)));
-            } else {
-                $query->orderByDesc('created_at')->limit(1);
             }
         }
 
@@ -165,8 +164,8 @@ final class StaffAuthService
             return true;
         }
 
-        $emailFailures = (int) Cache::get($emailKey, 0);
-        $ipFailures = (int) Cache::get($ipKey, 0);
+        $emailFailures = RateLimiter::attempts($emailKey);
+        $ipFailures = RateLimiter::attempts($ipKey);
 
         return $emailFailures >= self::LOGIN_LIMIT || $ipFailures >= self::IP_LIMIT;
     }
@@ -176,11 +175,8 @@ final class StaffAuthService
         $emailKey = $this->emailLoginCacheKey($email);
         $ipKey = $this->ipLoginCacheKey($ipAddress);
 
-        $emailFailures = (int) Cache::get($emailKey, 0) + 1;
-        $ipFailures = (int) Cache::get($ipKey, 0) + 1;
-
-        Cache::put($emailKey, $emailFailures, now()->addMinutes(self::LOGIN_TTL_MINUTES));
-        Cache::put($ipKey, $ipFailures, now()->addMinutes(self::LOGIN_TTL_MINUTES));
+        $emailFailures = RateLimiter::increment($emailKey, self::LOGIN_TTL_MINUTES * 60);
+        $ipFailures = RateLimiter::increment($ipKey, self::LOGIN_TTL_MINUTES * 60);
 
         if ($emailFailures >= 6) {
             $delaySeconds = min(60, 2 ** ($emailFailures - 5));
@@ -195,9 +191,9 @@ final class StaffAuthService
 
     private function clearLoginState(string $email, string $ipAddress): void
     {
-        Cache::forget($this->emailLoginCacheKey($email));
+        RateLimiter::clear($this->emailLoginCacheKey($email));
+        RateLimiter::clear($this->ipLoginCacheKey($ipAddress));
         Cache::forget($this->emailLoginCacheKey($email).':blocked');
-        Cache::forget($this->ipLoginCacheKey($ipAddress));
         Cache::forget($this->ipLoginCacheKey($ipAddress).':blocked');
     }
 
