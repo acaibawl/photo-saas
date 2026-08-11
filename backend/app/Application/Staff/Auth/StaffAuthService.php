@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
-use Tymon\JWTAuth\Facades\JWTAuth;
+use Tymon\JWTAuth\JWT;
 
 final class StaffAuthService
 {
@@ -22,6 +22,8 @@ final class StaffAuthService
     private const IP_LIMIT = 30;
 
     private const LOGIN_TTL_MINUTES = 1;
+
+    public function __construct(private readonly JWT $jwt) {}
 
     public function login(string $email, string $password, string $ipAddress, ?string $userAgent = null): array
     {
@@ -45,7 +47,7 @@ final class StaffAuthService
 
         $staff->forceFill(['last_login_at' => now()])->save();
 
-        $accessToken = JWTAuth::fromUser($staff);
+        $accessToken = $this->jwt->fromUser($staff);
         $plainRefreshToken = $this->issueRefreshToken($staff, $ipAddress, $userAgent);
 
         return [
@@ -97,7 +99,7 @@ final class StaffAuthService
 
             $staff = KindergartenStaff::query()->findOrFail($refreshToken->kindergarten_staff_id);
             $newPlainToken = $this->issueRefreshToken($staff, $ipAddress, $userAgent, $refreshToken->family_id);
-            $accessToken = JWTAuth::fromUser($staff);
+            $accessToken = $this->jwt->fromUser($staff);
 
             return [
                 'access_token' => $accessToken,
