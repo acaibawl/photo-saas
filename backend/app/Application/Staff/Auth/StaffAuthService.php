@@ -12,8 +12,6 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
-use Illuminate\Support\Str;
-use Tymon\JWTAuth\JWT;
 
 final class StaffAuthService
 {
@@ -23,7 +21,7 @@ final class StaffAuthService
 
     private const LOGIN_TTL_MINUTES = 1;
 
-    public function __construct(private readonly JWT $jwt) {}
+    public function __construct(private readonly StaffTokenService $tokenService) {}
 
     public function login(string $email, string $password, string $ipAddress, ?string $userAgent = null): array
     {
@@ -37,7 +35,7 @@ final class StaffAuthService
             ->where('email_normalized', $normalizedEmail)
             ->first();
 
-        if ($staff === null || ! Hash::check($password, $staff->password_hash)) {
+        if ($staff === null || $staff->deactivated_at !== null || ! Hash::check($password, $staff->password_hash)) {
             $this->recordFailedLogin($normalizedEmail, $ipAddress);
 
             throw new InvalidStaffCredentialsException;
@@ -47,13 +45,12 @@ final class StaffAuthService
 
         $staff->forceFill(['last_login_at' => now()])->save();
 
-        $accessToken = $this->jwt->fromUser($staff);
-        $plainRefreshToken = $this->issueRefreshToken($staff, $ipAddress, $userAgent);
+        $tokens = $this->tokenService->issueTokensForStaff($staff, $ipAddress, $userAgent);
 
         return [
-            'access_token' => $accessToken,
-            'token_type' => 'Bearer',
-            'expires_in' => (int) config('jwt.ttl', 60) * 60,
+            'access_token' => $tokens['access_token'],
+            'token_type' => $tokens['token_type'],
+            'expires_in' => $tokens['expires_in'],
             'staff' => [
                 'id' => $staff->id,
                 'kindergarten_id' => $staff->kindergarten_id,
@@ -61,7 +58,7 @@ final class StaffAuthService
                 'email' => $staff->email,
                 'role' => $staff->role->value,
             ],
-            'refresh_token' => $plainRefreshToken,
+            'refresh_token' => $tokens['refresh_token'],
         ];
     }
 
@@ -76,17 +73,18 @@ final class StaffAuthService
         $tokenHash = hash('sha256', $plainToken);
 
         return DB::transaction(function () use ($tokenHash, $ipAddress, $userAgent): array {
+            /** @var StaffRefreshToken|null $refreshToken */
             $refreshToken = StaffRefreshToken::query()
                 ->where('token_hash', $tokenHash)
                 ->lockForUpdate()
                 ->first();
 
-            if ($refreshToken === null) {
+            if (! $refreshToken instanceof StaffRefreshToken) {
                 throw new InvalidStaffRefreshTokenException;
             }
 
             if ($refreshToken->revoked_at !== null) {
-                $this->revokeRefreshTokenFamily($refreshToken->family_id);
+                $this->tokenService->revokeRefreshTokenFamily($refreshToken->family_id);
 
                 throw new StaffRefreshTokenReuseDetectedException;
             }
@@ -98,14 +96,13 @@ final class StaffAuthService
             $refreshToken->forceFill(['revoked_at' => now()])->save();
 
             $staff = KindergartenStaff::query()->findOrFail($refreshToken->kindergarten_staff_id);
-            $newPlainToken = $this->issueRefreshToken($staff, $ipAddress, $userAgent, $refreshToken->family_id);
-            $accessToken = $this->jwt->fromUser($staff);
+            $tokens = $this->tokenService->issueTokensForStaff($staff, $ipAddress, $userAgent, $refreshToken->family_id);
 
             return [
-                'access_token' => $accessToken,
-                'token_type' => 'Bearer',
-                'expires_in' => (int) config('jwt.ttl', 60) * 60,
-                'refresh_token' => $newPlainToken,
+                'access_token' => $tokens['access_token'],
+                'token_type' => $tokens['token_type'],
+                'expires_in' => $tokens['expires_in'],
+                'refresh_token' => $tokens['refresh_token'],
             ];
         });
     }
@@ -123,31 +120,6 @@ final class StaffAuthService
         }
 
         return $query->update(['revoked_at' => now()]);
-    }
-
-    private function issueRefreshToken(KindergartenStaff $staff, string $ipAddress, ?string $userAgent, ?string $familyId = null): string
-    {
-        $plainToken = bin2hex(random_bytes(32));
-
-        StaffRefreshToken::create([
-            'kindergarten_staff_id' => $staff->id,
-            'token_hash' => hash('sha256', $plainToken),
-            'family_id' => $familyId ?? (string) Str::uuid(),
-            'family_expires_at' => now()->addDays(14),
-            'expires_at' => now()->addDays(14),
-            'ip_address' => $ipAddress,
-            'user_agent' => $userAgent,
-        ]);
-
-        return $plainToken;
-    }
-
-    private function revokeRefreshTokenFamily(string $familyId): void
-    {
-        StaffRefreshToken::query()
-            ->where('family_id', $familyId)
-            ->whereNull('revoked_at')
-            ->update(['revoked_at' => now()]);
     }
 
     private function isLoginRateLimited(string $email, string $ipAddress): bool
