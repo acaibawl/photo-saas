@@ -4,6 +4,7 @@ namespace App\Http\Requests\Staff;
 
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Http\Exceptions\HttpResponseException;
 
 class LoginStaffRequest extends FormRequest
 {
@@ -22,7 +23,7 @@ class LoginStaffRequest extends FormRequest
 
     protected function failedValidation(Validator $validator): void
     {
-        throw new \Illuminate\Http\Exceptions\HttpResponseException(response()->json([
+        throw new HttpResponseException(response()->json([
             'message' => 'Validation failed',
             'code' => 'VALIDATION_ERROR',
             'errors' => $validator->errors(),

@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\KindergartenStaff;
 use App\Models\User;
 
 return [
@@ -74,7 +75,7 @@ return [
 
         'kindergarten_staffs' => [
             'driver' => 'eloquent',
-            'model' => App\Models\KindergartenStaff::class,
+            'model' => KindergartenStaff::class,
         ],
 
         // 'users' => [

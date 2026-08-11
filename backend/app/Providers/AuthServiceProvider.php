@@ -20,7 +20,7 @@ class AuthServiceProvider extends ServiceProvider
         Auth::extend('jwt', function ($app, $name, array $config) {
             $provider = Auth::createUserProvider($config['provider']);
 
-            return new RequestGuard(function ($request) use ($provider) {
+            return new RequestGuard(function ($request) {
                 $token = $request->bearerToken();
 
                 if ($token === null) {

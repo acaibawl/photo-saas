@@ -38,7 +38,7 @@ final class StaffAuthService
         if ($staff === null || ! Hash::check($password, $staff->password_hash)) {
             $this->recordFailedLogin($normalizedEmail, $ipAddress);
 
-            throw new InvalidStaffCredentialsException();
+            throw new InvalidStaffCredentialsException;
         }
 
         $this->clearLoginState($normalizedEmail, $ipAddress);
@@ -68,7 +68,7 @@ final class StaffAuthService
         $plainToken = trim($refreshTokenValue);
 
         if ($plainToken === '') {
-            throw new InvalidStaffRefreshTokenException();
+            throw new InvalidStaffRefreshTokenException;
         }
 
         $tokenHash = hash('sha256', $plainToken);
@@ -80,17 +80,17 @@ final class StaffAuthService
                 ->first();
 
             if ($refreshToken === null) {
-                throw new InvalidStaffRefreshTokenException();
+                throw new InvalidStaffRefreshTokenException;
             }
 
             if ($refreshToken->revoked_at !== null) {
                 $this->revokeRefreshTokenFamily($refreshToken->family_id);
 
-                throw new StaffRefreshTokenReuseDetectedException();
+                throw new StaffRefreshTokenReuseDetectedException;
             }
 
             if ($refreshToken->expires_at->isPast() || $refreshToken->family_expires_at->isPast()) {
-                throw new InvalidStaffRefreshTokenException();
+                throw new InvalidStaffRefreshTokenException;
             }
 
             $refreshToken->forceFill(['revoked_at' => now()])->save();

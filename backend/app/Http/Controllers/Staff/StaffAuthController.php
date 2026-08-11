@@ -2,6 +2,4 @@
 
 namespace App\Http\Controllers\Staff;
 
-class StaffAuthController extends AuthController
-{
-}
+class StaffAuthController extends AuthController {}
