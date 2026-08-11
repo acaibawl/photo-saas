@@ -160,7 +160,7 @@ class AuthController extends Controller
             'kindergarten_id' => $staff->kindergarten_id,
             'name' => $staff->name,
             'email' => $staff->email,
-            'role' => $staff->role instanceof \BackedEnum ? $staff->role->value : $staff->role,
+            'role' => $staff->role->value,
         ]);
     }
 }

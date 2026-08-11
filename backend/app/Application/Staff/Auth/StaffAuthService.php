@@ -5,7 +5,6 @@ namespace App\Application\Staff\Auth;
 use App\Domain\Staff\Exceptions\InvalidStaffCredentialsException;
 use App\Domain\Staff\Exceptions\InvalidStaffRefreshTokenException;
 use App\Domain\Staff\Exceptions\StaffRefreshTokenReuseDetectedException;
-use App\Domain\Staff\StaffRole;
 use App\Models\KindergartenStaff;
 use App\Models\StaffRefreshToken;
 use Illuminate\Support\Carbon;
@@ -58,7 +57,7 @@ final class StaffAuthService
                 'kindergarten_id' => $staff->kindergarten_id,
                 'name' => $staff->name,
                 'email' => $staff->email,
-                'role' => $staff->role instanceof StaffRole ? $staff->role->value : $staff->role,
+                'role' => $staff->role->value,
             ],
             'refresh_token' => $plainRefreshToken,
         ];
@@ -96,7 +95,7 @@ final class StaffAuthService
 
             $refreshToken->forceFill(['revoked_at' => now()])->save();
 
-            $staff = $refreshToken->kindergartenStaff()->firstOrFail();
+            $staff = KindergartenStaff::query()->findOrFail($refreshToken->kindergarten_staff_id);
             $newPlainToken = $this->issueRefreshToken($staff, $ipAddress, $userAgent, $refreshToken->family_id);
             $accessToken = JWTAuth::fromUser($staff);
 
