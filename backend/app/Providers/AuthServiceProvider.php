@@ -2,9 +2,8 @@
 
 namespace App\Providers;
 
-use Illuminate\Auth\RequestGuard;
 use Illuminate\Foundation\Support\Providers\AuthServiceProvider as ServiceProvider;
-use Illuminate\Support\Facades\Auth;
+use Tymon\JWTAuth\JWTGuard;
 
 class AuthServiceProvider extends ServiceProvider
 {
@@ -17,20 +16,16 @@ class AuthServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        Auth::extend('jwt', function ($app, $name, array $config) {
-            $provider = Auth::createUserProvider($config['provider']);
+        $this->app['auth']->extend('jwt', function ($app, $name, array $config) {
+            $guard = new JWTGuard(
+                $app['tymon.jwt'],
+                $app['auth']->createUserProvider($config['provider']),
+                $app['request']
+            );
 
-            return new RequestGuard(function ($request) {
-                $token = $request->bearerToken();
+            $app->refresh('request', $guard, 'setRequest');
 
-                if ($token === null) {
-                    return null;
-                }
-
-                $user = Auth::guard('api')->setToken($token)->user();
-
-                return $user;
-            }, $request = app('request'), $provider);
+            return $guard;
         });
     }
 }
