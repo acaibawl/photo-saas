@@ -1,0 +1,125 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Domain\Shared\SecureToken;
+use App\Domain\Staff\StaffRole;
+use App\Models\Kindergarten;
+use App\Models\KindergartenStaff;
+use App\Models\StaffRefreshToken;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
+use Tests\TestCase;
+
+class StaffAuthTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private KindergartenStaff $staff;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $kindergarten = Kindergarten::create([
+            'name' => 'みらい幼稚園',
+            'slug' => 'mirai',
+        ]);
+
+        $this->staff = KindergartenStaff::create([
+            'kindergarten_id' => $kindergarten->id,
+            'name' => '山田太郎',
+            'email' => 'staff@example.com',
+            'email_normalized' => 'staff@example.com',
+            'password_hash' => Hash::make('password-123'),
+            'role' => StaffRole::Owner,
+        ]);
+    }
+
+    public function test_staff_can_login_and_fetch_profile(): void
+    {
+        $response = $this->withHeaders([
+            'Accept' => 'application/json',
+        ])->postJson('/staff/auth/login', [
+            'email' => 'staff@example.com',
+            'password' => 'password-123',
+        ]);
+
+        $response->assertOk()
+            ->assertJsonStructure([
+                'access_token',
+                'token_type',
+                'expires_in',
+                'staff' => ['id', 'kindergarten_id', 'role'],
+            ])
+            ->assertJsonPath('staff.email', 'staff@example.com');
+
+        $this->assertDatabaseHas('staff_refresh_tokens', [
+            'kindergarten_staff_id' => $this->staff->id,
+        ]);
+
+        $accessToken = $response->json('access_token');
+
+        $profileResponse = $this->withHeaders([
+            'Accept' => 'application/json',
+            'Authorization' => 'Bearer '.$accessToken,
+        ])->getJson('/staff/auth/me');
+
+        $profileResponse->assertOk()
+            ->assertJsonPath('email', 'staff@example.com')
+            ->assertJsonPath('role', 'owner');
+    }
+
+    public function test_login_returns_unauthorized_for_invalid_credentials(): void
+    {
+        $response = $this->withHeaders([
+            'Accept' => 'application/json',
+        ])->postJson('/staff/auth/login', [
+            'email' => 'staff@example.com',
+            'password' => 'wrong-password',
+        ]);
+
+        $response->assertUnauthorized()
+            ->assertJsonPath('code', 'STAFF_AUTH_INVALID_CREDENTIALS');
+    }
+
+    public function test_refresh_and_logout_revoke_tokens(): void
+    {
+        $token = SecureToken::generate();
+
+        $refreshToken = StaffRefreshToken::create([
+            'kindergarten_staff_id' => $this->staff->id,
+            'token_hash' => $token->hash(),
+            'family_id' => 'family-1',
+            'family_expires_at' => now()->addDays(14),
+            'expires_at' => now()->addDays(14),
+            'ip_address' => '127.0.0.1',
+            'user_agent' => 'phpunit',
+        ]);
+
+        $response = $this->withHeaders([
+            'Accept' => 'application/json',
+            'Cookie' => 'refresh_token='.rawurlencode($token->plainText()),
+        ])->postJson('/staff/auth/refresh');
+
+        $response->assertOk()
+            ->assertJsonStructure(['access_token', 'token_type', 'expires_in']);
+
+        $refreshToken->refresh();
+        $this->assertNotNull($refreshToken->revoked_at);
+
+        $this->assertDatabaseHas('staff_refresh_tokens', [
+            'family_id' => 'family-1',
+            'revoked_at' => null,
+        ]);
+
+        $logoutResponse = $this->withHeaders([
+            'Accept' => 'application/json',
+            'Authorization' => 'Bearer '.$response->json('access_token'),
+            'Cookie' => 'refresh_token='.rawurlencode($response->json('refresh_token')), // no-op placeholder
+        ])->postJson('/staff/auth/logout', ['all_sessions' => false]);
+
+        $logoutResponse->assertOk()
+            ->assertJsonPath('revoked_count', 1);
+    }
+}

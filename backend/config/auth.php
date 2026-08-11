@@ -42,6 +42,11 @@ return [
             'driver' => 'session',
             'provider' => 'users',
         ],
+
+        'staff' => [
+            'driver' => 'jwt',
+            'provider' => 'kindergarten_staffs',
+        ],
     ],
 
     /*
@@ -65,6 +70,11 @@ return [
         'users' => [
             'driver' => 'eloquent',
             'model' => env('AUTH_MODEL', User::class),
+        ],
+
+        'kindergarten_staffs' => [
+            'driver' => 'eloquent',
+            'model' => App\Models\KindergartenStaff::class,
         ],
 
         // 'users' => [
