@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Auth\AuthenticationException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -19,4 +20,11 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('*'),
         );
+
+        $exceptions->render(function (AuthenticationException $exception, Request $request) {
+            return response()->json([
+                'message' => 'Staff authentication is required',
+                'code' => 'STAFF_AUTH_REQUIRED',
+            ], 401);
+        });
     })->create();
