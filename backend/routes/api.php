@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\PublicApi\StaffInvitationPublicController;
 use App\Http\Controllers\Staff\AuthController;
+use App\Http\Controllers\Staff\ChildClassController;
+use App\Http\Controllers\Staff\ChildController;
 use App\Http\Controllers\Staff\StaffInvitationController;
 use App\Http\Controllers\Staff\StaffMemberController;
 use Illuminate\Http\JsonResponse;
@@ -21,6 +23,18 @@ Route::prefix('/staff/auth')->group(function (): void {
 });
 
 Route::prefix('/staff')->middleware('auth:staff')->group(function (): void {
+    Route::post('/children', [ChildController::class, 'store']);
+    Route::get('/children', [ChildController::class, 'index']);
+    Route::get('/children/{childId}', [ChildController::class, 'show']);
+    Route::patch('/children/{childId}', [ChildController::class, 'update']);
+    Route::patch('/children/{childId}/status', [ChildController::class, 'status']);
+
+    Route::post('/child-classes', [ChildClassController::class, 'store']);
+    Route::get('/child-classes', [ChildClassController::class, 'index']);
+    Route::get('/child-classes/{childClassId}', [ChildClassController::class, 'show']);
+    Route::patch('/child-classes/{childClassId}', [ChildClassController::class, 'update']);
+    Route::delete('/child-classes/{childClassId}', [ChildClassController::class, 'destroy']);
+
     Route::post('/staff-invitations', [StaffInvitationController::class, 'store']);
     Route::get('/staff-invitations', [StaffInvitationController::class, 'index']);
     Route::post('/staff-invitations/{invitationId}/revoke', [StaffInvitationController::class, 'revoke']);

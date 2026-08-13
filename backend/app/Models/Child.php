@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Domain\Child\ChildStatus;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
@@ -15,10 +16,11 @@ use Illuminate\Support\Carbon;
  * @property string $id
  * @property string $kindergarten_id
  * @property string $name
- * @property string $class_name
- * @property string $status
+ * @property ChildStatus $status
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
+ * @property string|null $child_class_id
+ * @property-read ChildClass|null $childClass
  * @property-read Collection<int, GuardianChild> $guardianLinks
  * @property-read int|null $guardian_links_count
  * @property-read Collection<int, ChildInvitation> $invitations
@@ -26,12 +28,14 @@ use Illuminate\Support\Carbon;
  * @property-read Kindergarten $kindergarten
  * @property-read Collection<int, PhotoChildTag> $photoTags
  * @property-read int|null $photo_tags_count
+ * @property-read PhotoChildTag|null $pivot
  * @property-read Collection<int, Photo> $photos
  * @property-read int|null $photos_count
  *
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Child newModelQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Child newQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Child query()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Child whereChildClassId($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Child whereClassName($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Child whereCreatedAt($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Child whereId($value)
@@ -42,14 +46,26 @@ use Illuminate\Support\Carbon;
  *
  * @mixin \Eloquent
  */
-#[Fillable(['kindergarten_id', 'name', 'class_name', 'status'])]
+#[Fillable(['kindergarten_id', 'child_class_id', 'name', 'status'])]
 class Child extends Model
 {
     use HasUlids;
 
+    protected function casts(): array
+    {
+        return [
+            'status' => ChildStatus::class,
+        ];
+    }
+
     public function kindergarten(): BelongsTo
     {
         return $this->belongsTo(Kindergarten::class);
+    }
+
+    public function childClass(): BelongsTo
+    {
+        return $this->belongsTo(ChildClass::class, 'child_class_id');
     }
 
     public function invitations(): HasMany

@@ -31,6 +31,7 @@ use Illuminate\Support\Carbon;
  * @property-read Kindergarten $kindergarten
  * @property-read Collection<int, OrderItem> $orderItems
  * @property-read int|null $order_items_count
+ * @property-read PhotoChildTag|null $pivot
  * @property-read Collection<int, Child> $taggedChildren
  * @property-read int|null $tagged_children_count
  * @property-read Collection<int, UploadJob> $uploadJobs
