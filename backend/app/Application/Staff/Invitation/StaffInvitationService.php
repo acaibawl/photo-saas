@@ -9,7 +9,7 @@ use App\Domain\Staff\Exceptions\StaffEmailAlreadyExistsException;
 use App\Domain\Staff\Exceptions\StaffInvitationAlreadyAcceptedException;
 use App\Domain\Staff\Exceptions\StaffInvitationAlreadyExistsException;
 use App\Domain\Staff\Exceptions\StaffInvitationInvalidOrExpiredException;
-use App\Domain\Staff\Exceptions\StaffMemberNotFoundException;
+use App\Domain\Staff\Exceptions\StaffInvitationNotFoundException;
 use App\Domain\Staff\StaffRole;
 use App\Models\KindergartenStaff;
 use App\Models\StaffInvitation;
@@ -100,27 +100,31 @@ final class StaffInvitationService
 
     public function revokeInvitation(KindergartenStaff $actor, string $invitationId): array
     {
-        $invitation = StaffInvitation::query()
-            ->where('kindergarten_id', $actor->kindergarten_id)
-            ->whereKey($invitationId)
-            ->first();
+        return DB::transaction(function () use ($actor, $invitationId): array {
+            /** @var StaffInvitation|null $invitation */
+            $invitation = StaffInvitation::query()
+                ->where('kindergarten_id', $actor->kindergarten_id)
+                ->whereKey($invitationId)
+                ->lockForUpdate()
+                ->first();
 
-        if ($invitation === null) {
-            throw new StaffMemberNotFoundException('Staff invitation not found');
-        }
+            if ($invitation === null) {
+                throw new StaffInvitationNotFoundException;
+            }
 
-        if ($invitation->accepted_at !== null) {
-            throw new StaffInvitationAlreadyAcceptedException;
-        }
+            if ($invitation->accepted_at !== null) {
+                throw new StaffInvitationAlreadyAcceptedException;
+            }
 
-        if ($invitation->revoked_at === null) {
-            $invitation->forceFill(['revoked_at' => now()])->save();
-        }
+            if ($invitation->revoked_at === null) {
+                $invitation->forceFill(['revoked_at' => now()])->save();
+            }
 
-        return [
-            'invitation_id' => $invitation->id,
-            'revoked_at' => $invitation->revoked_at?->toIso8601String(),
-        ];
+            return [
+                'invitation_id' => $invitation->id,
+                'revoked_at' => $invitation->revoked_at?->toIso8601String(),
+            ];
+        });
     }
 
     public function previewInvitation(string $rawToken): array

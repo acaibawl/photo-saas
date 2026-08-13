@@ -88,12 +88,13 @@ class StaffAuthTest extends TestCase
     {
         $firstToken = SecureToken::generate();
         $secondToken = SecureToken::generate();
+        $familyExpiresAt = now()->addDays(5)->startOfSecond();
 
         $firstRefreshToken = StaffRefreshToken::create([
             'kindergarten_staff_id' => $this->staff->id,
             'token_hash' => $firstToken->hash(),
             'family_id' => 'family-1',
-            'family_expires_at' => now()->addDays(14),
+            'family_expires_at' => $familyExpiresAt,
             'expires_at' => now()->addDays(14),
             'ip_address' => '127.0.0.1',
             'user_agent' => 'phpunit',
@@ -126,6 +127,15 @@ class StaffAuthTest extends TestCase
         $this->assertNotEmpty($matches[1] ?? []);
 
         $rotatedRefreshToken = urldecode($matches[1]);
+        $rotatedTokenModel = StaffRefreshToken::query()
+            ->where('token_hash', hash('sha256', $rotatedRefreshToken))
+            ->first();
+
+        $this->assertNotNull($rotatedTokenModel);
+        $this->assertSame(
+            $familyExpiresAt->toIso8601String(),
+            $rotatedTokenModel->family_expires_at->toIso8601String(),
+        );
 
         $logoutResponse = $this->withHeaders([
             'Accept' => 'application/json',
@@ -152,5 +162,30 @@ class StaffAuthTest extends TestCase
         $response->assertStatus(422)
             ->assertJsonPath('code', 'VALIDATION_ERROR')
             ->assertJsonPath('errors.refresh_token.0', 'validation.required');
+    }
+
+    public function test_deactivated_staff_cannot_refresh_access_token(): void
+    {
+        $refreshToken = SecureToken::generate();
+
+        StaffRefreshToken::create([
+            'kindergarten_staff_id' => $this->staff->id,
+            'token_hash' => $refreshToken->hash(),
+            'family_id' => 'family-deactivated',
+            'family_expires_at' => now()->addDays(14),
+            'expires_at' => now()->addDays(14),
+            'ip_address' => '127.0.0.1',
+            'user_agent' => 'phpunit',
+        ]);
+
+        $this->staff->forceFill(['deactivated_at' => now()])->save();
+
+        $response = $this->withHeaders([
+            'Accept' => 'application/json',
+            'Cookie' => 'refresh_token='.rawurlencode($refreshToken->plainText()),
+        ])->postJson('/staff/auth/refresh');
+
+        $response->assertUnauthorized()
+            ->assertJsonPath('code', 'STAFF_AUTH_REFRESH_INVALID');
     }
 }

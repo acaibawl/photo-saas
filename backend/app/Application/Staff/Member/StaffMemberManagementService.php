@@ -40,10 +40,10 @@ final class StaffMemberManagementService
         }
 
         if ($keyword !== null && trim($keyword) !== '') {
-            $escaped = str_replace(['%', '_'], ['\\%', '\\_'], trim($keyword));
+            $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], trim($keyword));
             $query->where(function ($builder) use ($escaped): void {
-                $builder->where('name', 'like', "%{$escaped}%")
-                    ->orWhere('email', 'like', "%{$escaped}%");
+                $builder->whereRaw('name LIKE ? ESCAPE ?', ["%{$escaped}%", '\\'])
+                    ->orWhereRaw('email LIKE ? ESCAPE ?', ["%{$escaped}%", '\\']);
             });
         }
 
@@ -79,10 +79,6 @@ final class StaffMemberManagementService
                 throw new StaffMemberNotFoundException;
             }
 
-            if ($target->id === $actor->id) {
-                throw new StaffRoleChangeSelfForbiddenException;
-            }
-
             if (
                 $target->role === StaffRole::Owner
                 && $newRole === StaffRole::Staff
@@ -90,6 +86,10 @@ final class StaffMemberManagementService
                 && $activeOwners->count() <= 1
             ) {
                 throw new OwnerMinimumRequiredException;
+            }
+
+            if ($target->id === $actor->id) {
+                throw new StaffRoleChangeSelfForbiddenException;
             }
 
             $target->forceFill(['role' => $newRole])->save();

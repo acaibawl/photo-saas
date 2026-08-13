@@ -6,6 +6,7 @@ use App\Application\Staff\Invitation\StaffInvitationService;
 use App\Domain\Staff\Exceptions\StaffEmailAlreadyExistsException;
 use App\Domain\Staff\Exceptions\StaffInvitationAlreadyAcceptedException;
 use App\Domain\Staff\Exceptions\StaffInvitationAlreadyExistsException;
+use App\Domain\Staff\Exceptions\StaffInvitationNotFoundException;
 use App\Domain\Staff\StaffRole;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Staff\CreateStaffInvitationRequest;
@@ -99,7 +100,7 @@ class StaffInvitationController extends Controller
                 'message' => 'Staff invitation already accepted',
                 'code' => 'STAFF_INVITATION_ALREADY_ACCEPTED',
             ], 409);
-        } catch (\RuntimeException $exception) {
+        } catch (StaffInvitationNotFoundException) {
             return response()->json([
                 'message' => 'Staff invitation not found',
                 'code' => 'STAFF_INVITATION_NOT_FOUND',

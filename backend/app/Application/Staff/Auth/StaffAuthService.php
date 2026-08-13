@@ -71,8 +71,9 @@ final class StaffAuthService
         }
 
         $tokenHash = hash('sha256', $plainToken);
+        $reuseDetectedFamilyId = null;
 
-        return DB::transaction(function () use ($tokenHash, $ipAddress, $userAgent): array {
+        $result = DB::transaction(function () use ($tokenHash, $ipAddress, $userAgent, &$reuseDetectedFamilyId): ?array {
             /** @var StaffRefreshToken|null $refreshToken */
             $refreshToken = StaffRefreshToken::query()
                 ->where('token_hash', $tokenHash)
@@ -84,9 +85,9 @@ final class StaffAuthService
             }
 
             if ($refreshToken->revoked_at !== null) {
-                $this->tokenService->revokeRefreshTokenFamily($refreshToken->family_id);
+                $reuseDetectedFamilyId = $refreshToken->family_id;
 
-                throw new StaffRefreshTokenReuseDetectedException;
+                return null;
             }
 
             if ($refreshToken->expires_at->isPast() || $refreshToken->family_expires_at->isPast()) {
@@ -96,6 +97,10 @@ final class StaffAuthService
             $refreshToken->forceFill(['revoked_at' => now()])->save();
 
             $staff = KindergartenStaff::query()->findOrFail($refreshToken->kindergarten_staff_id);
+            if ($staff->deactivated_at !== null) {
+                throw new InvalidStaffRefreshTokenException;
+            }
+
             $tokens = $this->tokenService->issueTokensForStaff($staff, $ipAddress, $userAgent, $refreshToken->family_id);
 
             return [
@@ -105,6 +110,14 @@ final class StaffAuthService
                 'refresh_token' => $tokens['refresh_token'],
             ];
         });
+
+        if ($result === null) {
+            $this->tokenService->revokeRefreshTokenFamily($reuseDetectedFamilyId);
+
+            throw new StaffRefreshTokenReuseDetectedException;
+        }
+
+        return $result;
     }
 
     public function logout(KindergartenStaff $staff, bool $allSessions, ?string $refreshTokenValue = null): int

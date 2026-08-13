@@ -4,6 +4,7 @@ namespace App\Application\Staff\Auth;
 
 use App\Models\KindergartenStaff;
 use App\Models\StaffRefreshToken;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Str;
 use Tymon\JWTAuth\JWT;
 
@@ -51,17 +52,37 @@ final class StaffTokenService
         ?string $familyId = null,
     ): string {
         $plainToken = bin2hex(random_bytes(32));
+        $resolvedFamilyId = $familyId ?? (string) Str::uuid();
+        $familyExpiresAt = $this->resolveFamilyExpiresAt($resolvedFamilyId, $familyId !== null);
 
         StaffRefreshToken::create([
             'kindergarten_staff_id' => $staff->id,
             'token_hash' => hash('sha256', $plainToken),
-            'family_id' => $familyId ?? (string) Str::uuid(),
-            'family_expires_at' => now()->addDays(14),
+            'family_id' => $resolvedFamilyId,
+            'family_expires_at' => $familyExpiresAt,
             'expires_at' => now()->addDays(14),
             'ip_address' => $ipAddress,
             'user_agent' => $userAgent,
         ]);
 
         return $plainToken;
+    }
+
+    private function resolveFamilyExpiresAt(string $familyId, bool $isRotation): CarbonInterface
+    {
+        if (! $isRotation) {
+            return now()->addDays(14);
+        }
+
+        $existingFamilyToken = StaffRefreshToken::query()
+            ->where('family_id', $familyId)
+            ->orderBy('created_at')
+            ->first();
+
+        if ($existingFamilyToken instanceof StaffRefreshToken) {
+            return $existingFamilyToken->family_expires_at;
+        }
+
+        return now()->addDays(14);
     }
 }

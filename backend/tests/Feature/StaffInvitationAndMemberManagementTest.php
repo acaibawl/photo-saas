@@ -167,6 +167,15 @@ class StaffInvitationAndMemberManagementTest extends TestCase
             ->assertJsonPath('code', 'STAFF_INVITATION_ALREADY_ACCEPTED');
     }
 
+    public function test_owner_cannot_revoke_missing_invitation(): void
+    {
+        $response = $this->withHeaders($this->authHeaders($this->ownerA))
+            ->postJson('/staff/staff-invitations/'.str()->uuid().'/revoke');
+
+        $response->assertStatus(404)
+            ->assertJsonPath('code', 'STAFF_INVITATION_NOT_FOUND');
+    }
+
     public function test_public_preview_returns_invitation_data_and_rejects_invalid_token(): void
     {
         [$invitation, $rawToken] = $this->createInvitationRecord($this->kindergartenA->id, 'preview@example.com', StaffRole::Staff, [
@@ -280,8 +289,18 @@ class StaffInvitationAndMemberManagementTest extends TestCase
             ->assertJsonPath('code', 'STAFF_MEMBER_NOT_FOUND');
     }
 
-    public function test_staff_role_change_prevents_self_change_and_last_owner_demotion(): void
+    public function test_staff_role_change_prevents_self_change(): void
     {
+        KindergartenStaff::create([
+            'kindergarten_id' => $this->kindergartenA->id,
+            'name' => '副園長',
+            'email' => 'owner-sub@example.com',
+            'email_normalized' => 'owner-sub@example.com',
+            'password_hash' => Hash::make('password-123'),
+            'role' => StaffRole::Owner,
+            'joined_at' => now(),
+        ]);
+
         $selfResponse = $this->withHeaders($this->authHeaders($this->ownerA))
             ->patchJson('/staff/staff-members/'.$this->ownerA->id.'/role', [
                 'role' => 'staff',
@@ -289,7 +308,21 @@ class StaffInvitationAndMemberManagementTest extends TestCase
 
         $selfResponse->assertStatus(409)
             ->assertJsonPath('code', 'STAFF_ROLE_CHANGE_SELF_FORBIDDEN');
+    }
 
+    public function test_staff_role_change_prevents_last_owner_demotion(): void
+    {
+        $lastOwnerDemoteResponse = $this->withHeaders($this->authHeaders($this->ownerA))
+            ->patchJson('/staff/staff-members/'.$this->ownerA->id.'/role', [
+                'role' => 'staff',
+            ]);
+
+        $lastOwnerDemoteResponse->assertStatus(409)
+            ->assertJsonPath('code', 'OWNER_MINIMUM_REQUIRED');
+    }
+
+    public function test_staff_role_change_allows_promoting_owner_back_to_owner(): void
+    {
         $secondaryOwner = KindergartenStaff::create([
             'kindergarten_id' => $this->kindergartenA->id,
             'name' => '副園長',
@@ -308,12 +341,13 @@ class StaffInvitationAndMemberManagementTest extends TestCase
         $demoteResponse->assertOk()
             ->assertJsonPath('role', 'staff');
 
-        $lastOwnerDemoteResponse = $this->withHeaders($this->authHeaders($this->ownerA))
+        $lastOwnerPromotionResponse = $this->withHeaders($this->authHeaders($this->ownerA))
             ->patchJson('/staff/staff-members/'.$secondaryOwner->id.'/role', [
                 'role' => 'owner',
             ]);
 
-        $lastOwnerDemoteResponse->assertOk();
+        $lastOwnerPromotionResponse->assertOk()
+            ->assertJsonPath('role', 'owner');
     }
 
     public function test_deactivate_enforces_constraints_revokes_tokens_and_reactivate_restores_status(): void
