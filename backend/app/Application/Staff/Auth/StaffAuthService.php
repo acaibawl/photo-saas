@@ -112,6 +112,10 @@ final class StaffAuthService
         });
 
         if ($result === null) {
+            if ($reuseDetectedFamilyId === null) {
+                throw new \LogicException('Refresh token family ID was not captured during reuse detection.');
+            }
+
             $this->tokenService->revokeRefreshTokenFamily($reuseDetectedFamilyId);
 
             throw new StaffRefreshTokenReuseDetectedException;
