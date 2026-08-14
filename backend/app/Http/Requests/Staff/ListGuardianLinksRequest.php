@@ -24,4 +24,14 @@ class ListGuardianLinksRequest extends ApiFormRequest
     {
         return filter_var($this->input('include_unlinked', false), FILTER_VALIDATE_BOOLEAN);
     }
+
+    public function getPage(): int
+    {
+        return max(1, (int) $this->input('page', 1));
+    }
+
+    public function getPerPage(): int
+    {
+        return max(1, min(100, (int) $this->input('per_page', 20)));
+    }
 }

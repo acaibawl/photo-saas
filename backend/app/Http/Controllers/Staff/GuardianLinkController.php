@@ -35,6 +35,8 @@ class GuardianLinkController extends Controller
                 $staff,
                 $childId,
                 $request->getIncludeUnlinked(),
+                $request->getPage(),
+                $request->getPerPage(),
             );
         } catch (ChildNotFoundException) {
             return response()->json([
@@ -51,10 +53,10 @@ class GuardianLinkController extends Controller
         $data = array_map(static fn (GuardianChild $link): array => [
             'link_id' => $link->id,
             'guardian_id' => $link->guardian_id,
-            'guardian_name' => $link->guardian?->name,
-            'guardian_email' => $link->guardian?->email,
+            'guardian_name' => $link->guardian->name,
+            'guardian_email' => $link->guardian->email,
             'label' => $link->label,
-            'linked_at' => $link->linked_at?->toIso8601String(),
+            'linked_at' => $link->linked_at->toIso8601String(),
             'unlinked_at' => $link->unlinked_at?->toIso8601String(),
         ], $paginator->items());
 

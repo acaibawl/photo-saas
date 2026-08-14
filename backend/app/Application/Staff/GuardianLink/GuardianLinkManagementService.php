@@ -20,6 +20,8 @@ final class GuardianLinkManagementService
         KindergartenStaff $actor,
         string $childId,
         bool $includeUnlinked = false,
+        int $page = 1,
+        int $perPage = 20,
     ): LengthAwarePaginator {
         $child = $this->childManagementService->findChild($actor, $childId);
 
@@ -32,7 +34,7 @@ final class GuardianLinkManagementService
             $query->whereNull('unlinked_at');
         }
 
-        return $query->paginate(20, ['*'], 'page', 1);
+        return $query->paginate($perPage, ['*'], 'page', $page);
     }
 
     public function unlinkGuardianLink(
@@ -41,7 +43,7 @@ final class GuardianLinkManagementService
         ?string $reason,
         string $confirmText,
     ): array {
-        return DB::transaction(function () use ($actor, $linkId, $reason, $confirmText): array {
+        return DB::transaction(function () use ($actor, $linkId, $confirmText): array {
             $link = GuardianChild::query()->whereKey($linkId)->lockForUpdate()->first();
 
             if ($link === null) {

@@ -144,6 +144,15 @@ class GuardianLinkManagementTest extends TestCase
             ->assertJsonPath('meta.total', 2)
             ->assertJsonPath('data.0.link_id', $activeLink->id)
             ->assertJsonPath('data.1.link_id', $unlinkedLink->id);
+
+        $paginatedResponse = $this->withHeaders($this->authHeaders($this->staffA))
+            ->getJson('/staff/children/'.$this->childA->id.'/guardian-links?include_unlinked=true&per_page=1&page=2');
+
+        $paginatedResponse->assertOk()
+            ->assertJsonPath('meta.current_page', 2)
+            ->assertJsonPath('meta.per_page', 1)
+            ->assertJsonPath('meta.total', 2)
+            ->assertJsonPath('data.0.link_id', $unlinkedLink->id);
     }
 
     public function test_staff_can_unlink_and_restore_guardian_links(): void
