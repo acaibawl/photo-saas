@@ -70,12 +70,15 @@ Route::prefix('/public')->group(function (): void {
 });
 
 Route::prefix('/guardian/auth')->group(function (): void {
-    Route::post('/login', [GuardianAuthController::class, 'login']);
-    Route::post('/refresh', [GuardianAuthController::class, 'refresh']);
+    Route::post('/login', [GuardianAuthController::class, 'login'])
+        ->middleware('throttle:20,1');
+    Route::post('/refresh', [GuardianAuthController::class, 'refresh'])
+        ->middleware('throttle:20,1');
+    Route::post('/logout', [GuardianAuthController::class, 'logout'])
+        ->middleware('auth:guardian');
     Route::post('/email/verification-notification', [GuardianAuthController::class, 'verificationNotification'])
         ->middleware('auth:guardian');
     Route::get('/email/verify/{id}/{hash}', [GuardianAuthController::class, 'verifyBySignedUrl'])
         ->middleware('signed')
         ->name('verification.verify');
-    Route::post('/email/verify', [GuardianAuthController::class, 'verifyEmail']);
 });

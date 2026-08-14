@@ -2,8 +2,10 @@
 
 namespace App\Application\Guardian\Auth;
 
+use App\Domain\Guardian\Exceptions\GuardianEmailAlreadyExistsException;
 use App\Domain\Guardian\Exceptions\GuardianInvitationAlreadyUsedException;
 use App\Domain\Guardian\Exceptions\GuardianInvitationInvalidOrExpiredException;
+use App\Domain\Guardian\Exceptions\GuardianLoginRateLimitedException;
 use App\Domain\Guardian\Exceptions\GuardianRefreshTokenReuseDetectedException;
 use App\Domain\Guardian\Exceptions\InvalidGuardianCredentialsException;
 use App\Domain\Guardian\Exceptions\InvalidGuardianRefreshTokenException;
@@ -22,11 +24,11 @@ use Illuminate\Support\Facades\RateLimiter;
 
 final class GuardianAuthService
 {
-    private const LOGIN_LIMIT = 5;
+    private const LOGIN_LIMIT = 6;
 
     private const IP_LIMIT = 30;
 
-    private const LOGIN_TTL_MINUTES = 1;
+    private const LOGIN_TTL_MINUTES = 15;
 
     public function __construct(private readonly GuardianTokenService $tokenService) {}
 
@@ -85,6 +87,8 @@ final class GuardianAuthService
                     'email' => $normalizedEmail,
                     'password_hash' => Hash::make($password),
                 ]);
+            } elseif (! Hash::check($password, $guardian->password_hash)) {
+                throw new GuardianEmailAlreadyExistsException;
             }
 
             $activeLinkExists = GuardianChild::query()
@@ -132,7 +136,7 @@ final class GuardianAuthService
         $normalizedEmail = $this->normalizeEmail($email);
 
         if ($this->isLoginRateLimited($normalizedEmail, $ipAddress)) {
-            throw new \RuntimeException('Too many login attempts', 429);
+            throw new GuardianLoginRateLimitedException;
         }
 
         $guardian = Guardian::query()->where('email', $normalizedEmail)->first();
@@ -225,7 +229,7 @@ final class GuardianAuthService
         return true;
     }
 
-    public function verifyEmail(string $id, string $hash, string $signature, int $expires): ?string
+    public function verifyEmail(string $id, string $hash): ?string
     {
         $guardian = Guardian::query()->findOrFail($id);
 
@@ -233,18 +237,11 @@ final class GuardianAuthService
             throw new \InvalidArgumentException('Email hash mismatch');
         }
 
-        $expectedSignature = hash_hmac('sha256', $guardian->id.'|'.$hash.'|'.$expires, config('app.key'));
-        if (! hash_equals($expectedSignature, $signature)) {
-            throw new \InvalidArgumentException('Email verification signature mismatch');
+        if (! $guardian->hasVerifiedEmail()) {
+            $guardian->markEmailAsVerified();
         }
 
-        if ($expires < time()) {
-            throw new \InvalidArgumentException('Email verification token expired');
-        }
-
-        $guardian->forceFill(['email_verified_at' => now()])->save();
-
-        return $guardian->email_verified_at?->toIso8601String();
+        return $guardian->fresh()?->email_verified_at?->toIso8601String();
     }
 
     private function isInvitationAvailable(ChildInvitation $invitation): bool
@@ -291,12 +288,12 @@ final class GuardianAuthService
         $emailFailures = RateLimiter::increment($emailKey, self::LOGIN_TTL_MINUTES * 60);
         $ipFailures = RateLimiter::increment($ipKey, self::LOGIN_TTL_MINUTES * 60);
 
-        if ($emailFailures >= 6) {
+        if ($emailFailures >= self::LOGIN_LIMIT) {
             $delaySeconds = min(60, 2 ** ($emailFailures - 5));
             Cache::put($emailKey.':blocked', now()->addSeconds($delaySeconds)->getTimestamp(), now()->addSeconds($delaySeconds));
         }
 
-        if ($ipFailures >= 6) {
+        if ($ipFailures >= self::LOGIN_LIMIT) {
             $delaySeconds = min(60, 2 ** ($ipFailures - 5));
             Cache::put($ipKey.':blocked', now()->addSeconds($delaySeconds)->getTimestamp(), now()->addSeconds($delaySeconds));
         }

@@ -3,11 +3,11 @@
 namespace App\Http\Controllers\PublicApi;
 
 use App\Application\Guardian\Auth\GuardianAuthService;
+use App\Domain\Guardian\Exceptions\GuardianEmailAlreadyExistsException;
 use App\Domain\Guardian\Exceptions\GuardianInvitationAlreadyUsedException;
 use App\Domain\Guardian\Exceptions\GuardianInvitationInvalidOrExpiredException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Public\AcceptChildInvitationRequest;
-use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 
 class ChildInvitationPublicController extends Controller
@@ -49,7 +49,7 @@ class ChildInvitationPublicController extends Controller
                 'message' => 'Invitation already used',
                 'code' => 'INVITATION_ALREADY_USED',
             ], 409);
-        } catch (UniqueConstraintViolationException) {
+        } catch (GuardianEmailAlreadyExistsException) {
             return response()->json([
                 'message' => 'Guardian email already exists',
                 'code' => 'GUARDIAN_EMAIL_ALREADY_EXISTS',

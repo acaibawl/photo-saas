@@ -3,13 +3,14 @@
 namespace App\Http\Controllers\Guardian;
 
 use App\Application\Guardian\Auth\GuardianAuthService;
+use App\Application\Guardian\Auth\GuardianTokenService;
+use App\Domain\Guardian\Exceptions\GuardianLoginRateLimitedException;
 use App\Domain\Guardian\Exceptions\GuardianRefreshTokenReuseDetectedException;
 use App\Domain\Guardian\Exceptions\InvalidGuardianCredentialsException;
 use App\Domain\Guardian\Exceptions\InvalidGuardianRefreshTokenException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Guardian\LoginGuardianRequest;
 use App\Http\Requests\Guardian\RefreshGuardianRequest;
-use App\Http\Requests\Guardian\VerifyGuardianEmailRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -35,7 +36,7 @@ class AuthController extends Controller
                 'message' => 'Invalid guardian credentials',
                 'code' => 'GUARDIAN_AUTH_INVALID_CREDENTIALS',
             ], 401);
-        } catch (\RuntimeException $exception) {
+        } catch (GuardianLoginRateLimitedException) {
             return response()->json([
                 'message' => 'Too many login attempts',
                 'code' => 'GUARDIAN_AUTH_RATE_LIMITED',
@@ -82,6 +83,24 @@ class AuthController extends Controller
         }
     }
 
+    public function logout(Request $request, GuardianTokenService $tokenService): JsonResponse
+    {
+        $guardian = $request->user('guardian');
+
+        if ($guardian === null) {
+            return response()->json([
+                'message' => 'Unauthenticated',
+                'code' => 'GUARDIAN_AUTH_FORBIDDEN',
+            ], 403);
+        }
+
+        $revokedCount = $tokenService->revokeAllActiveRefreshTokensForGuardian($guardian->id);
+
+        return response()->json([
+            'revoked_count' => $revokedCount,
+        ]);
+    }
+
     public function verificationNotification(Request $request, GuardianAuthService $service): JsonResponse
     {
         $guardian = $request->user('guardian');
@@ -98,28 +117,18 @@ class AuthController extends Controller
         return response()->json(['queued' => true], 202);
     }
 
-    public function verifyEmail(VerifyGuardianEmailRequest $request, GuardianAuthService $service): JsonResponse
-    {
-        $emailVerifiedAt = $service->verifyEmail(
-            $request->string('id')->toString(),
-            $request->string('hash')->toString(),
-            $request->string('signature')->toString(),
-            (int) $request->integer('expires'),
-        );
-
-        return response()->json([
-            'email_verified_at' => $emailVerifiedAt,
-        ]);
-    }
-
     public function verifyBySignedUrl(Request $request, GuardianAuthService $service): JsonResponse
     {
-        $emailVerifiedAt = $service->verifyEmail(
-            (string) $request->route('id'),
-            (string) $request->route('hash'),
-            (string) $request->query('signature', ''),
-            (int) $request->query('expires', 0),
-        );
+        try {
+            $emailVerifiedAt = $service->verifyEmail(
+                (string) $request->route('id'),
+                (string) $request->route('hash'),
+            );
+        } catch (\InvalidArgumentException) {
+            return response()->json([
+                'message' => 'Invalid verification link',
+            ], 403);
+        }
 
         return response()->json([
             'email_verified_at' => $emailVerifiedAt,

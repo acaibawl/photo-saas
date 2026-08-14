@@ -11,6 +11,8 @@ use App\Models\Kindergarten;
 use App\Models\KindergartenStaff;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\URL;
+use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
 class GuardianAuthTest extends TestCase
@@ -105,6 +107,76 @@ class GuardianAuthTest extends TestCase
         $this->assertNotNull($invitation->used_at);
     }
 
+    public function test_guardian_invitation_accept_rejects_case_variant_existing_email(): void
+    {
+        $token = SecureToken::generate();
+
+        ChildInvitation::create([
+            'kindergarten_id' => $this->kindergarten->id,
+            'child_id' => $this->child->id,
+            'token_hash' => $token->hash(),
+            'label' => '母用',
+            'expires_at' => now()->addDays(7),
+            'created_by_staff_id' => $this->staff->id,
+        ]);
+
+        $acceptResponse = $this->withHeaders(['Accept' => 'application/json'])
+            ->postJson('/public/invitations/'.$token->plainText().'/accept', [
+                'name' => '別名義',
+                'email' => 'Guardian@Example.com',
+                'password' => 'different-password',
+            ]);
+
+        $acceptResponse->assertStatus(409)
+            ->assertJsonPath('code', 'GUARDIAN_EMAIL_ALREADY_EXISTS');
+
+        $this->assertDatabaseCount('guardians', 1);
+    }
+
+    public function test_existing_guardian_must_authenticate_before_accepting_invitation(): void
+    {
+        $token = SecureToken::generate();
+
+        $invitation = ChildInvitation::create([
+            'kindergarten_id' => $this->kindergarten->id,
+            'child_id' => $this->child->id,
+            'token_hash' => $token->hash(),
+            'label' => '父用',
+            'expires_at' => now()->addDays(7),
+            'created_by_staff_id' => $this->staff->id,
+        ]);
+
+        $failedResponse = $this->withHeaders(['Accept' => 'application/json'])
+            ->postJson('/public/invitations/'.$token->plainText().'/accept', [
+                'name' => '保護者太郎',
+                'email' => 'guardian@example.com',
+                'password' => 'wrong-password',
+            ]);
+
+        $failedResponse->assertStatus(409)
+            ->assertJsonPath('code', 'GUARDIAN_EMAIL_ALREADY_EXISTS');
+
+        $this->assertNull($invitation->fresh()->used_at);
+
+        $acceptedResponse = $this->withHeaders(['Accept' => 'application/json'])
+            ->postJson('/public/invitations/'.$token->plainText().'/accept', [
+                'name' => '保護者太郎',
+                'email' => 'guardian@example.com',
+                'password' => 'password-123',
+            ]);
+
+        $acceptedResponse->assertOk()
+            ->assertJsonPath('guardian.id', $this->guardian->id)
+            ->assertJsonPath('guardian.email', 'guardian@example.com');
+
+        $this->assertDatabaseCount('guardians', 1);
+        $this->assertDatabaseHas('guardian_child', [
+            'guardian_id' => $this->guardian->id,
+            'child_id' => $this->child->id,
+            'kindergarten_id' => $this->kindergarten->id,
+        ]);
+    }
+
     public function test_guardian_login_and_refresh_work_with_token_rotation(): void
     {
         $loginResponse = $this->withHeaders(['Accept' => 'application/json'])
@@ -117,28 +189,102 @@ class GuardianAuthTest extends TestCase
             ->assertJsonStructure(['access_token', 'token_type', 'expires_in', 'guardian' => ['id']])
             ->assertJsonPath('guardian.email', 'guardian@example.com');
 
-        $refreshToken = SecureToken::generate();
+        $firstRefreshToken = $this->extractRefreshToken($loginResponse);
+
+        $refreshResponse = $this->withHeaders([
+            'Accept' => 'application/json',
+            'Cookie' => 'refresh_token='.rawurlencode($firstRefreshToken),
+        ])->postJson('/guardian/auth/refresh');
+
+        $refreshResponse->assertOk()
+            ->assertJsonStructure(['access_token', 'token_type', 'expires_in']);
+
+        $rotatedRefreshToken = $this->extractRefreshToken($refreshResponse);
+
+        $reuseResponse = $this->withHeaders([
+            'Accept' => 'application/json',
+            'Cookie' => 'refresh_token='.rawurlencode($firstRefreshToken),
+        ])->postJson('/guardian/auth/refresh');
+
+        $reuseResponse->assertStatus(401)
+            ->assertJsonPath('code', 'GUARDIAN_AUTH_REFRESH_REUSE_DETECTED');
+
+        $rotatedTokenResponse = $this->withHeaders([
+            'Accept' => 'application/json',
+            'Cookie' => 'refresh_token='.rawurlencode($rotatedRefreshToken),
+        ])->postJson('/guardian/auth/refresh');
+
+        $rotatedTokenResponse->assertStatus(401)
+            ->assertJsonPath('code', 'GUARDIAN_AUTH_REFRESH_REUSE_DETECTED');
+    }
+
+    public function test_guardian_logout_revokes_all_active_refresh_tokens(): void
+    {
+        $loginResponse = $this->withHeaders(['Accept' => 'application/json'])
+            ->postJson('/guardian/auth/login', [
+                'email' => 'guardian@example.com',
+                'password' => 'password-123',
+            ]);
+
+        $loginResponse->assertOk();
+
+        $extraRefreshToken = SecureToken::generate();
         GuardianRefreshToken::create([
             'guardian_id' => $this->guardian->id,
-            'token_hash' => $refreshToken->hash(),
-            'family_id' => 'family-guardian-1',
+            'token_hash' => $extraRefreshToken->hash(),
+            'family_id' => 'family-guardian-extra',
             'family_expires_at' => now()->addDays(14),
             'expires_at' => now()->addDays(14),
             'ip_address' => '127.0.0.1',
             'user_agent' => 'phpunit',
         ]);
 
-        $refreshResponse = $this->withHeaders([
+        $logoutResponse = $this->withHeaders([
             'Accept' => 'application/json',
-            'Cookie' => 'refresh_token='.rawurlencode($refreshToken->plainText()),
-        ])->postJson('/guardian/auth/refresh');
+            'Authorization' => 'Bearer '.$loginResponse->json('access_token'),
+        ])->postJson('/guardian/auth/logout');
 
-        $refreshResponse->assertOk()
-            ->assertJsonStructure(['access_token', 'token_type', 'expires_in']);
+        $logoutResponse->assertOk()
+            ->assertJsonPath('revoked_count', 2);
 
-        $setCookieHeader = $refreshResponse->headers->get('set-cookie');
-        $this->assertIsString($setCookieHeader);
-        $this->assertStringContainsString('refresh_token=', $setCookieHeader);
+        $this->assertSame(0, GuardianRefreshToken::query()
+            ->where('guardian_id', $this->guardian->id)
+            ->whereNull('revoked_at')
+            ->count());
+    }
+
+    public function test_guardian_login_rate_limit_preserves_failures_beyond_one_minute(): void
+    {
+        for ($attempt = 0; $attempt < 5; $attempt++) {
+            $response = $this->withHeaders(['Accept' => 'application/json'])
+                ->postJson('/guardian/auth/login', [
+                    'email' => 'guardian@example.com',
+                    'password' => 'wrong-password',
+                ]);
+
+            $response->assertStatus(401)
+                ->assertJsonPath('code', 'GUARDIAN_AUTH_INVALID_CREDENTIALS');
+        }
+
+        $this->travel(61)->seconds();
+
+        $sixthResponse = $this->withHeaders(['Accept' => 'application/json'])
+            ->postJson('/guardian/auth/login', [
+                'email' => 'guardian@example.com',
+                'password' => 'wrong-password',
+            ]);
+
+        $sixthResponse->assertStatus(401)
+            ->assertJsonPath('code', 'GUARDIAN_AUTH_INVALID_CREDENTIALS');
+
+        $blockedResponse = $this->withHeaders(['Accept' => 'application/json'])
+            ->postJson('/guardian/auth/login', [
+                'email' => 'guardian@example.com',
+                'password' => 'wrong-password',
+            ]);
+
+        $blockedResponse->assertStatus(429)
+            ->assertJsonPath('code', 'GUARDIAN_AUTH_RATE_LIMITED');
     }
 
     public function test_guardian_email_verification_notification_and_verification_work(): void
@@ -161,19 +307,94 @@ class GuardianAuthTest extends TestCase
         $notificationResponse->assertStatus(202)
             ->assertJsonPath('queued', true);
 
-        $expires = now()->addMinutes(30)->getTimestamp();
         $hash = sha1($this->guardian->email);
-        $signature = hash_hmac('sha256', $this->guardian->id.'|'.$hash.'|'.$expires, config('app.key'));
-
-        $verifyResponse = $this->withHeaders(['Accept' => 'application/json'])
-            ->postJson('/guardian/auth/email/verify', [
+        $verificationUrl = URL::temporarySignedRoute(
+            'verification.verify',
+            now()->addMinutes(30),
+            [
                 'id' => $this->guardian->id,
                 'hash' => $hash,
-                'signature' => $signature,
-                'expires' => $expires,
-            ]);
+            ],
+        );
+
+        $verifyResponse = $this->withHeaders(['Accept' => 'application/json'])
+            ->getJson($verificationUrl);
 
         $verifyResponse->assertOk()
             ->assertJsonPath('email_verified_at', $this->guardian->fresh()->email_verified_at->toIso8601String());
+    }
+
+    public function test_guardian_email_verification_rejects_tampered_expired_and_cross_guardian_urls(): void
+    {
+        $this->guardian->forceFill(['email_verified_at' => null])->save();
+
+        $otherGuardian = Guardian::create([
+            'name' => '別保護者',
+            'email' => 'other-guardian@example.com',
+            'password_hash' => Hash::make('password-123'),
+            'email_verified_at' => null,
+        ]);
+
+        $guardianHash = sha1($this->guardian->email);
+        $validUrl = URL::temporarySignedRoute(
+            'verification.verify',
+            now()->addMinutes(30),
+            [
+                'id' => $this->guardian->id,
+                'hash' => $guardianHash,
+            ],
+        );
+
+        $tamperedUrl = str_replace($guardianHash, sha1('tampered@example.com'), $validUrl);
+
+        $tamperedResponse = $this->withHeaders(['Accept' => 'application/json'])
+            ->getJson($tamperedUrl);
+
+        $tamperedResponse->assertStatus(403);
+        $this->assertNull($this->guardian->fresh()->email_verified_at);
+
+        $expiredUrl = URL::temporarySignedRoute(
+            'verification.verify',
+            now()->subMinute(),
+            [
+                'id' => $this->guardian->id,
+                'hash' => $guardianHash,
+            ],
+        );
+
+        $expiredResponse = $this->withHeaders(['Accept' => 'application/json'])
+            ->getJson($expiredUrl);
+
+        $expiredResponse->assertStatus(403);
+        $this->assertNull($this->guardian->fresh()->email_verified_at);
+
+        $crossGuardianUrl = URL::temporarySignedRoute(
+            'verification.verify',
+            now()->addMinutes(30),
+            [
+                'id' => $otherGuardian->id,
+                'hash' => $guardianHash,
+            ],
+        );
+
+        $crossGuardianResponse = $this->withHeaders(['Accept' => 'application/json'])
+            ->getJson($crossGuardianUrl);
+
+        $crossGuardianResponse->assertStatus(403);
+        $this->assertNull($this->guardian->fresh()->email_verified_at);
+        $this->assertNull($otherGuardian->fresh()->email_verified_at);
+    }
+
+    private function extractRefreshToken(TestResponse $response): string
+    {
+        $setCookieHeader = $response->headers->get('set-cookie');
+
+        $this->assertIsString($setCookieHeader);
+
+        preg_match('/refresh_token=([^;]+)/', $setCookieHeader, $matches);
+
+        $this->assertNotEmpty($matches[1] ?? []);
+
+        return urldecode($matches[1]);
     }
 }
