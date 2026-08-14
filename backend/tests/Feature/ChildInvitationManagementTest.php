@@ -146,6 +146,8 @@ class ChildInvitationManagementTest extends TestCase
         $used->forceFill(['used_at' => now()])->save();
         $revoked = $this->createInvitation($this->childA, $this->staffA, '祖父用');
         $revoked->forceFill(['revoked_at' => now()])->save();
+        $expired = $this->createInvitation($this->childA, $this->staffA, '祖母用');
+        $expired->forceFill(['expires_at' => now()->subDay()])->save();
 
         $response = $this->withHeaders($this->authHeaders($this->staffA))
             ->getJson('/staff/children/'.$this->childA->id.'/invitations?status=active');
@@ -167,6 +169,13 @@ class ChildInvitationManagementTest extends TestCase
         $revokedResponse->assertOk()
             ->assertJsonPath('meta.total', 1)
             ->assertJsonPath('data.0.invitation_id', $revoked->id);
+
+        $expiredResponse = $this->withHeaders($this->authHeaders($this->staffA))
+            ->getJson('/staff/children/'.$this->childA->id.'/invitations?status=expired');
+
+        $expiredResponse->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.invitation_id', $expired->id);
     }
 
     public function test_print_returns_pdf_with_matching_token(): void
