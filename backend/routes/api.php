@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Guardian\AuthController as GuardianAuthController;
+use App\Http\Controllers\Guardian\GuardianLinkController as GuardianGuardianLinkController;
 use App\Http\Controllers\PublicApi\ChildInvitationPublicController;
 use App\Http\Controllers\PublicApi\StaffInvitationPublicController;
 use App\Http\Controllers\Staff\AuthController;
@@ -72,6 +73,11 @@ Route::prefix('/public')->group(function (): void {
         Route::post('/{rawToken}/accept', [StaffInvitationPublicController::class, 'accept'])
             ->middleware('throttle:20,1');
     });
+});
+
+Route::prefix('/guardian')->middleware('auth:guardian')->group(function (): void {
+    Route::post('/invitations/{rawToken}/accept', [GuardianGuardianLinkController::class, 'acceptInvitation']);
+    Route::get('/children', [GuardianGuardianLinkController::class, 'index']);
 });
 
 Route::prefix('/guardian/auth')->group(function (): void {
