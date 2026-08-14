@@ -7,6 +7,7 @@ use App\Http\Controllers\Staff\AuthController;
 use App\Http\Controllers\Staff\ChildClassController;
 use App\Http\Controllers\Staff\ChildController;
 use App\Http\Controllers\Staff\ChildInvitationController;
+use App\Http\Controllers\Staff\GuardianLinkController;
 use App\Http\Controllers\Staff\StaffInvitationController;
 use App\Http\Controllers\Staff\StaffMemberController;
 use Illuminate\Http\JsonResponse;
@@ -43,6 +44,10 @@ Route::prefix('/staff')->middleware('auth:staff')->group(function (): void {
     Route::get('/invitations/{invitationId}/print', [ChildInvitationController::class, 'print']);
     Route::post('/invitations/{invitationId}/revoke', [ChildInvitationController::class, 'revoke']);
     Route::post('/invitations/{invitationId}/reissue', [ChildInvitationController::class, 'reissue']);
+
+    Route::get('/children/{childId}/guardian-links', [GuardianLinkController::class, 'index']);
+    Route::post('/guardian-links/{linkId}/unlink', [GuardianLinkController::class, 'unlink']);
+    Route::post('/guardian-links/{linkId}/restore', [GuardianLinkController::class, 'restore']);
 
     Route::post('/staff-invitations', [StaffInvitationController::class, 'store']);
     Route::get('/staff-invitations', [StaffInvitationController::class, 'index']);
