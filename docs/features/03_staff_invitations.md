@@ -78,19 +78,15 @@
 | フィールド | 場所 | 型 | 必須 | バリデーション |
 |---|---|---|---|---|
 | invitation_id | path | string(ULID) | 必須 | 自園に属すること |
-| format | query | string | 任意 | `pdf` / `html`, 省略時 `html` |
+| token | query | string | 必須 | 発行/再発行レスポンスの `invite_url` に含まれる生トークンと一致すること |
 
 ### Output（200）
 
-| フィールド | 型 |
-|---|---|
-| invitation_id | string(ULID) |
-| child_name | string |
-| kindergarten_name | string |
-| label | string |
-| invite_url | string(url) |
-| qr_svg_base64 | string |
-| expires_at | string(datetime) |
+PDFファイル（`Content-Type: application/pdf`）をそのまま返却する。
+
+### ドメイン制約
+
+- 生トークンは `token_hash` としてのみ保存されるため、印刷時は発行/再発行時にクライアントが保持している生トークンを `token` として渡す。ハッシュ照合に失敗した場合は `403 INVITATION_TOKEN_MISMATCH`。
 
 ## 4) 招待失効
 
@@ -148,5 +144,8 @@
 | 401 | STAFF_AUTH_REQUIRED | 未認証 |
 | 403 | TENANT_SCOPE_VIOLATION | 他園データ操作 |
 | 404 | INVITATION_NOT_FOUND | 招待不在 |
-| 409 | INVITATION_ALREADY_USED | 使用済み招待への失効不可など |
+| 403 | INVITATION_TOKEN_MISMATCH | 印刷用トークンがハッシュと不一致 |
+| 409 | INVITATION_ALREADY_USED | 使用済み招待への失効不可・再発行不可 |
+| 409 | INVITATION_ALREADY_REVOKED | 失効済み招待への再発行不可 |
+| 409 | INVITATION_REISSUE_LIMIT_EXCEEDED | 再発行回数上限（3回）超過 |
 | 422 | VALIDATION_ERROR | 入力不正 |
