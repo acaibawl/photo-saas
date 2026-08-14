@@ -49,7 +49,13 @@ class GuardianAuthTest extends TestCase
             'joined_at' => now(),
         ]);
 
+        $childClass = ChildClass::create([
+            'kindergarten_id' => $this->kindergarten->id,
+            'name' => 'ひよこ組',
+        ]);
+
         $this->child = Child::create([
+            'child_class_id' => $childClass->id,
             'name' => '山田花子',
             'status' => 'enrolled',
         ]);
@@ -408,6 +414,10 @@ class GuardianAuthTest extends TestCase
         $duplicateResponse->assertStatus(409)
             ->assertJsonPath('code', 'GUARDIAN_CHILD_LINK_ALREADY_EXISTS');
 
+        $invitation->refresh();
+        $this->assertNull($invitation->used_at);
+        $this->assertNull($invitation->used_by_guardian_id);
+
         $usedToken = SecureToken::generate();
 
         ChildInvitation::create([
@@ -428,6 +438,179 @@ class GuardianAuthTest extends TestCase
 
         $usedResponse->assertStatus(409)
             ->assertJsonPath('code', 'INVITATION_ALREADY_USED');
+    }
+
+    public function test_guardian_link_invitation_rejects_invalid_expired_and_revoked_requests_without_side_effects(): void
+    {
+        $kindergarten = Kindergarten::create([
+            'name' => '若葉保育園',
+            'slug' => 'wakaba',
+        ]);
+
+        $staff = KindergartenStaff::create([
+            'kindergarten_id' => $kindergarten->id,
+            'name' => '先生',
+            'email' => 'wakaba-staff@example.com',
+            'email_normalized' => 'wakaba-staff@example.com',
+            'password_hash' => Hash::make('password-123'),
+            'role' => 'owner',
+            'joined_at' => now(),
+        ]);
+
+        $class = ChildClass::create([
+            'kindergarten_id' => $kindergarten->id,
+            'name' => 'さくら組',
+        ]);
+
+        $child = Child::create([
+            'child_class_id' => $class->id,
+            'name' => '検証太郎',
+            'status' => 'enrolled',
+        ]);
+
+        $activeToken = SecureToken::generate();
+        $activeInvitation = ChildInvitation::create([
+            'kindergarten_id' => $kindergarten->id,
+            'child_id' => $child->id,
+            'token_hash' => $activeToken->hash(),
+            'label' => '父用',
+            'expires_at' => now()->addDays(7),
+            'created_by_staff_id' => $staff->id,
+        ]);
+
+        $initialLinkCount = GuardianChild::query()
+            ->where('guardian_id', $this->guardian->id)
+            ->where('child_id', $child->id)
+            ->count();
+
+        $invalidTokenResponse = $this->withHeaders([
+            'Accept' => 'application/json',
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($this->guardian),
+        ])->postJson('/guardian/invitations/'.SecureToken::generate()->plainText().'/accept');
+
+        $invalidTokenResponse->assertStatus(403)
+            ->assertJsonPath('code', 'INVITATION_INVALID_OR_EXPIRED');
+
+        $activeInvitation->refresh();
+        $this->assertNull($activeInvitation->used_at);
+        $this->assertNull($activeInvitation->used_by_guardian_id);
+        $this->assertSame($initialLinkCount, GuardianChild::query()
+            ->where('guardian_id', $this->guardian->id)
+            ->where('child_id', $child->id)
+            ->count());
+
+        $expiredToken = SecureToken::generate();
+        $expiredInvitation = ChildInvitation::create([
+            'kindergarten_id' => $kindergarten->id,
+            'child_id' => $child->id,
+            'token_hash' => $expiredToken->hash(),
+            'label' => '母用',
+            'expires_at' => now()->subMinute(),
+            'created_by_staff_id' => $staff->id,
+        ]);
+
+        $expiredResponse = $this->withHeaders([
+            'Accept' => 'application/json',
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($this->guardian),
+        ])->postJson('/guardian/invitations/'.$expiredToken->plainText().'/accept');
+
+        $expiredResponse->assertStatus(403)
+            ->assertJsonPath('code', 'INVITATION_INVALID_OR_EXPIRED');
+
+        $expiredInvitation->refresh();
+        $this->assertNull($expiredInvitation->used_at);
+        $this->assertNull($expiredInvitation->used_by_guardian_id);
+        $this->assertSame($initialLinkCount, GuardianChild::query()
+            ->where('guardian_id', $this->guardian->id)
+            ->where('child_id', $child->id)
+            ->count());
+
+        $revokedToken = SecureToken::generate();
+        $revokedInvitation = ChildInvitation::create([
+            'kindergarten_id' => $kindergarten->id,
+            'child_id' => $child->id,
+            'token_hash' => $revokedToken->hash(),
+            'label' => '祖父母用',
+            'expires_at' => now()->addDays(7),
+            'revoked_at' => now(),
+            'created_by_staff_id' => $staff->id,
+        ]);
+
+        $revokedResponse = $this->withHeaders([
+            'Accept' => 'application/json',
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($this->guardian),
+        ])->postJson('/guardian/invitations/'.$revokedToken->plainText().'/accept');
+
+        $revokedResponse->assertStatus(403)
+            ->assertJsonPath('code', 'INVITATION_INVALID_OR_EXPIRED');
+
+        $revokedInvitation->refresh();
+        $this->assertNull($revokedInvitation->used_at);
+        $this->assertNull($revokedInvitation->used_by_guardian_id);
+        $this->assertSame($initialLinkCount, GuardianChild::query()
+            ->where('guardian_id', $this->guardian->id)
+            ->where('child_id', $child->id)
+            ->count());
+
+    }
+
+    public function test_guardian_link_invitation_rejects_unauthenticated_request_without_side_effects(): void
+    {
+        $kindergarten = Kindergarten::create([
+            'name' => '若葉保育園',
+            'slug' => 'wakaba-unauth',
+        ]);
+
+        $staff = KindergartenStaff::create([
+            'kindergarten_id' => $kindergarten->id,
+            'name' => '先生',
+            'email' => 'wakaba-unauth-staff@example.com',
+            'email_normalized' => 'wakaba-unauth-staff@example.com',
+            'password_hash' => Hash::make('password-123'),
+            'role' => 'owner',
+            'joined_at' => now(),
+        ]);
+
+        $class = ChildClass::create([
+            'kindergarten_id' => $kindergarten->id,
+            'name' => 'さくら組',
+        ]);
+
+        $child = Child::create([
+            'child_class_id' => $class->id,
+            'name' => '未認証検証太郎',
+            'status' => 'enrolled',
+        ]);
+
+        $unauthToken = SecureToken::generate();
+        $unauthInvitation = ChildInvitation::create([
+            'kindergarten_id' => $kindergarten->id,
+            'child_id' => $child->id,
+            'token_hash' => $unauthToken->hash(),
+            'label' => '兄用',
+            'expires_at' => now()->addDays(7),
+            'created_by_staff_id' => $staff->id,
+        ]);
+
+        $initialLinkCount = GuardianChild::query()
+            ->where('guardian_id', $this->guardian->id)
+            ->where('child_id', $child->id)
+            ->count();
+
+        $unauthResponse = $this->withHeaders([
+            'Accept' => 'application/json',
+        ])->postJson('/guardian/invitations/'.$unauthToken->plainText().'/accept');
+
+        $unauthResponse->assertStatus(401)
+            ->assertJsonPath('code', 'STAFF_AUTH_REQUIRED');
+
+        $unauthInvitation->refresh();
+        $this->assertNull($unauthInvitation->used_at);
+        $this->assertNull($unauthInvitation->used_by_guardian_id);
+        $this->assertSame($initialLinkCount, GuardianChild::query()
+            ->where('guardian_id', $this->guardian->id)
+            ->where('child_id', $child->id)
+            ->count());
     }
 
     public function test_guardian_email_verification_notification_and_verification_work(): void

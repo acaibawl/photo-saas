@@ -18,8 +18,8 @@ use Illuminate\Support\Carbon;
  * @property ChildStatus $status
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
- * @property string|null $child_class_id
- * @property-read ChildClass|null $childClass
+ * @property string $child_class_id
+ * @property-read ChildClass $childClass
  * @property-read Collection<int, GuardianChild> $guardianLinks
  * @property-read int|null $guardian_links_count
  * @property-read Collection<int, ChildInvitation> $invitations
