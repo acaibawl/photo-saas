@@ -74,6 +74,7 @@
             "Illuminate\\Foundation\\ComposerScripts::prePackageUninstall"
         ],
         "analyse": [
+            "./vendor/bin/phpstan clear-result-cache",
             "./vendor/bin/phpstan analyse --memory-limit=1G"
         ],
         "lint": [

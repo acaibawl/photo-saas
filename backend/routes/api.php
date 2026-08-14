@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\Guardian\AuthController as GuardianAuthController;
+use App\Http\Controllers\PublicApi\ChildInvitationPublicController;
 use App\Http\Controllers\PublicApi\StaffInvitationPublicController;
 use App\Http\Controllers\Staff\AuthController;
 use App\Http\Controllers\Staff\ChildClassController;
@@ -53,9 +55,27 @@ Route::prefix('/staff')->middleware('auth:staff')->group(function (): void {
     Route::post('/staff-members/{staffId}/reactivate', [StaffMemberController::class, 'reactivate']);
 });
 
-Route::prefix('/public/staff-invitations')->group(function (): void {
-    Route::get('/{rawToken}', [StaffInvitationPublicController::class, 'preview'])
+Route::prefix('/public')->group(function (): void {
+    Route::get('/invitations/{rawToken}', [ChildInvitationPublicController::class, 'preview'])
         ->middleware('throttle:60,1');
-    Route::post('/{rawToken}/accept', [StaffInvitationPublicController::class, 'accept'])
+    Route::post('/invitations/{rawToken}/accept', [ChildInvitationPublicController::class, 'accept'])
         ->middleware('throttle:20,1');
+
+    Route::prefix('/staff-invitations')->group(function (): void {
+        Route::get('/{rawToken}', [StaffInvitationPublicController::class, 'preview'])
+            ->middleware('throttle:60,1');
+        Route::post('/{rawToken}/accept', [StaffInvitationPublicController::class, 'accept'])
+            ->middleware('throttle:20,1');
+    });
+});
+
+Route::prefix('/guardian/auth')->group(function (): void {
+    Route::post('/login', [GuardianAuthController::class, 'login']);
+    Route::post('/refresh', [GuardianAuthController::class, 'refresh']);
+    Route::post('/email/verification-notification', [GuardianAuthController::class, 'verificationNotification'])
+        ->middleware('auth:guardian');
+    Route::get('/email/verify/{id}/{hash}', [GuardianAuthController::class, 'verifyBySignedUrl'])
+        ->middleware('signed')
+        ->name('verification.verify');
+    Route::post('/email/verify', [GuardianAuthController::class, 'verifyEmail']);
 });

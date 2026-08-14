@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Guardian;
 use App\Models\KindergartenStaff;
 use App\Models\User;
 
@@ -48,6 +49,11 @@ return [
             'driver' => 'jwt',
             'provider' => 'kindergarten_staffs',
         ],
+
+        'guardian' => [
+            'driver' => 'jwt',
+            'provider' => 'guardians',
+        ],
     ],
 
     /*
@@ -76,6 +82,11 @@ return [
         'kindergarten_staffs' => [
             'driver' => 'eloquent',
             'model' => KindergartenStaff::class,
+        ],
+
+        'guardians' => [
+            'driver' => 'eloquent',
+            'model' => Guardian::class,
         ],
 
         // 'users' => [
