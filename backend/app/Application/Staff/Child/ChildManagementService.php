@@ -27,7 +27,6 @@ final class ChildManagementService
             ]);
 
         $child = Child::create([
-            'kindergarten_id' => $actor->kindergarten_id,
             'child_class_id' => $childClass->id,
             'name' => $name,
             'status' => $status,
@@ -46,7 +45,9 @@ final class ChildManagementService
     ): LengthAwarePaginator {
         $query = Child::query()
             ->with('childClass')
-            ->where('kindergarten_id', $actor->kindergarten_id)
+            ->whereHas('childClass', function ($builder) use ($actor): void {
+                $builder->where('kindergarten_id', $actor->kindergarten_id);
+            })
             ->orderByDesc('created_at');
 
         if ($status !== null) {
@@ -76,6 +77,7 @@ final class ChildManagementService
     public function findChild(KindergartenStaff $actor, string $childId): Child
     {
         $child = Child::query()
+            ->with('childClass')
             ->whereKey($childId)
             ->first();
 
@@ -83,7 +85,7 @@ final class ChildManagementService
             throw new ChildNotFoundException;
         }
 
-        if ($child->kindergarten_id !== $actor->kindergarten_id) {
+        if (! $this->isChildInKindergarten($child, $actor->kindergarten_id)) {
             throw new ChildTenantScopeViolationException;
         }
 
@@ -115,6 +117,7 @@ final class ChildManagementService
         }
 
         $child->save();
+        $child->load('childClass');
 
         return $this->formatChild($child, true);
     }
@@ -126,6 +129,7 @@ final class ChildManagementService
     ): array {
         return DB::transaction(function () use ($actor, $childId, $status): array {
             $child = Child::query()
+                ->with('childClass')
                 ->whereKey($childId)
                 ->lockForUpdate()
                 ->first();
@@ -134,7 +138,7 @@ final class ChildManagementService
                 throw new ChildNotFoundException;
             }
 
-            if ($child->kindergarten_id !== $actor->kindergarten_id) {
+            if (! $this->isChildInKindergarten($child, $actor->kindergarten_id)) {
                 throw new ChildTenantScopeViolationException;
             }
 
@@ -171,16 +175,21 @@ final class ChildManagementService
         return false;
     }
 
+    private function isChildInKindergarten(Child $child, string $kindergartenId): bool
+    {
+        return $child->childClass?->kindergarten_id === $kindergartenId;
+    }
+
     private function formatChild(Child $child, bool $includeUpdatedAt): array
     {
-        $className = $child->childClass?->name;
+        $class = $child->childClass;
 
         return array_filter([
             'id' => $child->id,
-            'kindergarten_id' => $child->kindergarten_id,
+            'kindergarten_id' => $class?->kindergarten_id,
             'class_id' => $child->child_class_id,
             'name' => $child->name,
-            'class_name' => $className,
+            'class_name' => $class?->name,
             'status' => $child->status->value,
             'created_at' => $child->created_at?->toIso8601String(),
             'updated_at' => $includeUpdatedAt ? $child->updated_at?->toIso8601String() : null,

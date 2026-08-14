@@ -12,14 +12,13 @@ return new class extends Migration
     private const TABLE = 'children';
 
     private const HISTORY_COLUMNS = [
-        'id', 'kindergarten_id', 'name', 'status', 'created_at', 'updated_at',
+        'id', 'name', 'status', 'created_at', 'updated_at',
     ];
 
     public function up(): void
     {
         Schema::create(self::TABLE, function (Blueprint $table) {
             $table->ulid('id')->primary();
-            $table->foreignUlid('kindergarten_id')->constrained('kindergartens');
             $table->string('name', 100);
             $table->enum('status', ['enrolled', 'graduated', 'withdrawn'])->default('enrolled');
             $table->timestamps();
@@ -27,7 +26,6 @@ return new class extends Migration
 
         Schema::create(self::TABLE.'_histories', function (Blueprint $table) {
             $table->ulid('id')->index();
-            $table->ulid('kindergarten_id')->nullable();
             $table->string('name', 100)->nullable();
             $table->string('status', 20)->nullable();
             $table->timestamp('created_at')->nullable();

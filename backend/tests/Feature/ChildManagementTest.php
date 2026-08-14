@@ -66,21 +66,18 @@ class ChildManagementTest extends TestCase
         ]);
 
         $this->childA = Child::create([
-            'kindergarten_id' => $this->kindergartenA->id,
             'child_class_id' => $this->getOrCreateChildClassIdFor($this->kindergartenA->id, 'うさぎ組'),
             'name' => '山田花子',
             'status' => ChildStatus::Enrolled,
         ]);
 
         $this->childB = Child::create([
-            'kindergarten_id' => $this->kindergartenA->id,
             'child_class_id' => $this->getOrCreateChildClassIdFor($this->kindergartenA->id, 'ひよこ組'),
             'name' => '佐藤太郎',
             'status' => ChildStatus::Graduated,
         ]);
 
         $this->otherKindergartenChild = Child::create([
-            'kindergarten_id' => $this->kindergartenB->id,
             'child_class_id' => $this->getOrCreateChildClassIdFor($this->kindergartenB->id, 'ぞう組'),
             'name' => '他園児',
             'status' => ChildStatus::Enrolled,
@@ -104,9 +101,12 @@ class ChildManagementTest extends TestCase
                 'class_name' => 'ぱんだ組',
             ]);
 
+        $createdClassId = $this->getChildClassIdFor($this->kindergartenA->id, 'ぱんだ組');
+        self::assertNotNull($createdClassId);
+
         $createResponse->assertCreated()
             ->assertJsonPath('class_name', 'ぱんだ組')
-            ->assertJsonPath('class_id', $createResponse->json('class_id'));
+            ->assertJsonPath('class_id', $createdClassId);
 
         $createdChildId = $createResponse->json('id');
         $this->assertDatabaseHas('child_classes', [
@@ -115,8 +115,7 @@ class ChildManagementTest extends TestCase
         ]);
         $this->assertDatabaseHas('children', [
             'id' => $createdChildId,
-            'kindergarten_id' => $this->kindergartenA->id,
-            'child_class_id' => $this->getChildClassIdFor($this->kindergartenA->id, 'ぱんだ組'),
+            'child_class_id' => $createdClassId,
         ]);
     }
 

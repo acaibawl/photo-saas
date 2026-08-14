@@ -162,14 +162,14 @@ class ChildController extends Controller
 
     private function formatChild(Child $child, bool $includeUpdatedAt): array
     {
-        $className = $child->childClass?->name;
+        $class = $child->childClass;
 
         return array_filter([
             'id' => $child->id,
-            'kindergarten_id' => $child->kindergarten_id,
+            'kindergarten_id' => $class?->kindergarten_id,
             'class_id' => $child->child_class_id,
             'name' => $child->name,
-            'class_name' => $className,
+            'class_name' => $class?->name,
             'status' => $child->status->value,
             'created_at' => $child->created_at?->toIso8601String(),
             'updated_at' => $includeUpdatedAt ? $child->updated_at?->toIso8601String() : null,

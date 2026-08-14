@@ -14,7 +14,6 @@ use Illuminate\Support\Carbon;
 
 /**
  * @property string $id
- * @property string $kindergarten_id
  * @property string $name
  * @property ChildStatus $status
  * @property Carbon|null $created_at
@@ -25,7 +24,6 @@ use Illuminate\Support\Carbon;
  * @property-read int|null $guardian_links_count
  * @property-read Collection<int, ChildInvitation> $invitations
  * @property-read int|null $invitations_count
- * @property-read Kindergarten $kindergarten
  * @property-read Collection<int, PhotoChildTag> $photoTags
  * @property-read int|null $photo_tags_count
  * @property-read PhotoChildTag|null $pivot
@@ -39,14 +37,13 @@ use Illuminate\Support\Carbon;
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Child whereClassName($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Child whereCreatedAt($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Child whereId($value)
- * @method static \Illuminate\Database\Eloquent\Builder<static>|Child whereKindergartenId($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Child whereName($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Child whereStatus($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Child whereUpdatedAt($value)
  *
  * @mixin \Eloquent
  */
-#[Fillable(['kindergarten_id', 'child_class_id', 'name', 'status'])]
+#[Fillable(['child_class_id', 'name', 'status'])]
 class Child extends Model
 {
     use HasUlids;
@@ -56,11 +53,6 @@ class Child extends Model
         return [
             'status' => ChildStatus::class,
         ];
-    }
-
-    public function kindergarten(): BelongsTo
-    {
-        return $this->belongsTo(Kindergarten::class);
     }
 
     public function childClass(): BelongsTo

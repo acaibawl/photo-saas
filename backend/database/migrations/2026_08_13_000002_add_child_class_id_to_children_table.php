@@ -9,7 +9,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('children', function (Blueprint $table): void {
-            $table->foreignUlid('child_class_id')->nullable()->after('kindergarten_id')->constrained('child_classes');
+            $table->foreignUlid('child_class_id')->nullable()->after('id')->constrained('child_classes');
         });
     }
 

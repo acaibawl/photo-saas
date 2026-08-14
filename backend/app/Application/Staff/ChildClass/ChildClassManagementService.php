@@ -89,7 +89,6 @@ final class ChildClassManagementService
             $childClass = $this->findChildClass($actor, $childClassId);
 
             $inUseCount = Child::query()
-                ->where('kindergarten_id', $actor->kindergarten_id)
                 ->where('child_class_id', $childClass->id)
                 ->count();
 

@@ -102,8 +102,12 @@ class ChildClassManagementTest extends TestCase
 
         $listResponse->assertOk()
             ->assertJsonPath('meta.current_page', 1)
-            ->assertJsonPath('meta.total', 3)
-            ->assertJsonPath('data.0.name', 'うさぎ組');
+            ->assertJsonPath('meta.total', 3);
+
+        self::assertEqualsCanonicalizing(
+            ['うさぎ組', 'ひよこ組', 'ぱんだ組'],
+            array_column($listResponse->json('data'), 'name'),
+        );
 
         $showResponse = $this->withHeaders($this->authHeaders($this->staffA))
             ->getJson('/staff/child-classes/'.$this->classA->id);
@@ -161,10 +165,8 @@ class ChildClassManagementTest extends TestCase
         ]);
 
         Child::create([
-            'kindergarten_id' => $this->kindergartenA->id,
             'child_class_id' => $inUseClass->id,
             'name' => '山田花子',
-            'class_name' => 'おひさま組',
             'status' => ChildStatus::Enrolled,
         ]);
 
