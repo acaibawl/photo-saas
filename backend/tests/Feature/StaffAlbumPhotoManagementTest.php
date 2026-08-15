@@ -4,18 +4,21 @@ namespace Tests\Feature;
 
 use App\Domain\Child\ChildStatus;
 use App\Domain\Staff\StaffRole;
+use App\Jobs\ProcessUploadBatchJob;
 use App\Models\Album;
 use App\Models\Child;
 use App\Models\ChildClass;
-use App\Jobs\ProcessUploadBatchJob;
 use App\Models\Kindergarten;
 use App\Models\KindergartenStaff;
 use App\Models\Photo;
+use App\Models\UploadJob;
+use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
+use Mockery;
 use Tests\TestCase;
 use Tymon\JWTAuth\Facades\JWTAuth;
 
@@ -150,6 +153,42 @@ class StaffAlbumPhotoManagementTest extends TestCase
         ]);
     }
 
+    public function test_staff_cannot_create_album_with_blank_or_too_long_title(): void
+    {
+        $blankTitleResponse = $this->withHeaders($this->authHeaders($this->staffA))
+            ->postJson('/staff/albums', [
+                'title' => '',
+                'event_date' => '2026-05-01',
+            ]);
+
+        $blankTitleResponse->assertStatus(422)
+            ->assertJsonPath('code', 'VALIDATION_ERROR')
+            ->assertJsonStructure(['errors' => ['title']]);
+
+        $longTitleResponse = $this->withHeaders($this->authHeaders($this->staffA))
+            ->postJson('/staff/albums', [
+                'title' => str_repeat('あ', 121),
+                'event_date' => '2026-05-01',
+            ]);
+
+        $longTitleResponse->assertStatus(422)
+            ->assertJsonPath('code', 'VALIDATION_ERROR')
+            ->assertJsonStructure(['errors' => ['title']]);
+    }
+
+    public function test_staff_cannot_create_album_with_invalid_event_date(): void
+    {
+        $response = $this->withHeaders($this->authHeaders($this->staffA))
+            ->postJson('/staff/albums', [
+                'title' => '遠足',
+                'event_date' => '2026-13-01',
+            ]);
+
+        $response->assertStatus(422)
+            ->assertJsonPath('code', 'VALIDATION_ERROR')
+            ->assertJsonStructure(['errors' => ['event_date']]);
+    }
+
     public function test_staff_can_accept_photo_upload_batch_and_persist_jobs(): void
     {
         $response = $this->withHeaders($this->authHeaders($this->staffA))
@@ -184,6 +223,37 @@ class StaffAlbumPhotoManagementTest extends TestCase
         self::assertCount(2, Storage::disk('s3')->allFiles('uploads/tmp/'.$this->kindergartenA->id.'/'.$batchId));
     }
 
+    public function test_upload_batch_is_marked_failed_when_s3_storage_upload_fails(): void
+    {
+        $disk = Mockery::mock(FilesystemAdapter::class);
+        $disk->shouldReceive('putFileAs')->once()->andReturn(false);
+        Storage::shouldReceive('disk')->with('s3')->andReturn($disk);
+
+        $response = $this->withHeaders($this->authHeaders($this->staffA))
+            ->post('/staff/photos/upload-batch', [
+                'album_id' => $this->albumA->id,
+                'price' => '900',
+                'child_ids' => [$this->childA->id],
+                'files' => [UploadedFile::fake()->image('s3-fail.jpg')],
+            ], ['Accept' => 'application/json']);
+
+        $response->assertStatus(202)
+            ->assertJsonPath('status', 'failed');
+
+        $batchId = $response->json('batch_id');
+        self::assertNotNull($batchId);
+
+        $this->assertDatabaseHas('upload_requests', [
+            'id' => $batchId,
+            'status' => 'failed',
+        ]);
+        $this->assertDatabaseHas('upload_jobs', [
+            'upload_request_id' => $batchId,
+            'status' => 'failed',
+            'error_message' => 'Failed to store uploaded file in S3.',
+        ]);
+    }
+
     public function test_staff_can_process_and_query_upload_batch_status(): void
     {
         Queue::fake();
@@ -211,6 +281,20 @@ class StaffAlbumPhotoManagementTest extends TestCase
         $job = new ProcessUploadBatchJob($batchId);
         $job->handle();
 
+        $uploadJob = UploadJob::query()->where('upload_request_id', $batchId)->firstOrFail();
+        self::assertSame(1, $uploadJob->attempts);
+
+        $sourcePath = Storage::disk('s3')->allFiles('uploads/tmp/'.$this->kindergartenA->id.'/'.$batchId)[0];
+        $photo = Photo::query()->findOrFail($uploadJob->photo_id);
+
+        self::assertSame(Storage::disk('s3')->get($sourcePath), Storage::disk('s3')->get($photo->storage_path));
+        self::assertNotSame(Storage::disk('s3')->get($sourcePath), Storage::disk('s3')->get($photo->preview_path));
+
+        $job->handle();
+
+        $uploadJob->refresh();
+        self::assertSame(1, $uploadJob->attempts);
+
         $this->assertDatabaseHas('upload_requests', [
             'id' => $batchId,
             'status' => 'completed',
@@ -226,6 +310,62 @@ class StaffAlbumPhotoManagementTest extends TestCase
         ]);
     }
 
+    public function test_staff_cannot_list_photos_with_reversed_price_range(): void
+    {
+        $response = $this->withHeaders($this->authHeaders($this->staffA))
+            ->getJson('/staff/photos?price_min=2000&price_max=1000');
+
+        $response->assertStatus(422)
+            ->assertJsonPath('code', 'VALIDATION_ERROR')
+            ->assertJsonStructure(['errors' => ['price_max']]);
+    }
+
+    public function test_staff_cannot_update_photo_with_price_out_of_bounds(): void
+    {
+        $tooLowResponse = $this->withHeaders($this->authHeaders($this->staffA))
+            ->patchJson('/staff/photos/'.$this->readyPhoto->id, [
+                'price' => 0,
+            ]);
+
+        $tooLowResponse->assertStatus(422)
+            ->assertJsonPath('code', 'VALIDATION_ERROR')
+            ->assertJsonStructure(['errors' => ['price']]);
+
+        $tooHighResponse = $this->withHeaders($this->authHeaders($this->staffA))
+            ->patchJson('/staff/photos/'.$this->readyPhoto->id, [
+                'price' => 100001,
+            ]);
+
+        $tooHighResponse->assertStatus(422)
+            ->assertJsonPath('code', 'VALIDATION_ERROR')
+            ->assertJsonStructure(['errors' => ['price']]);
+    }
+
+    public function test_staff_cannot_update_photo_with_duplicate_or_too_many_child_ids(): void
+    {
+        $duplicateChildIdsResponse = $this->withHeaders($this->authHeaders($this->staffA))
+            ->patchJson('/staff/photos/'.$this->readyPhoto->id, [
+                'child_ids' => [$this->childA->id, $this->childA->id],
+            ]);
+
+        $duplicateChildIdsResponse->assertStatus(422)
+            ->assertJsonPath('code', 'VALIDATION_ERROR');
+
+        $tooManyChildIds = array_map(
+            fn (): string => (string) str()->ulid(),
+            range(1, 51),
+        );
+
+        $tooManyChildIdsResponse = $this->withHeaders($this->authHeaders($this->staffA))
+            ->patchJson('/staff/photos/'.$this->readyPhoto->id, [
+                'child_ids' => $tooManyChildIds,
+            ]);
+
+        $tooManyChildIdsResponse->assertStatus(422)
+            ->assertJsonPath('code', 'VALIDATION_ERROR')
+            ->assertJsonStructure(['errors' => ['child_ids']]);
+    }
+
     public function test_upload_batch_rejects_cross_tenant_album_and_child_ids(): void
     {
         $crossTenantAlbumResponse = $this->withHeaders($this->authHeaders($this->staffA))
@@ -234,8 +374,8 @@ class StaffAlbumPhotoManagementTest extends TestCase
                 'files' => [UploadedFile::fake()->image('first.jpg')],
             ], ['Accept' => 'application/json']);
 
-        $crossTenantAlbumResponse->assertStatus(403)
-            ->assertJsonPath('code', 'TENANT_SCOPE_VIOLATION');
+        $crossTenantAlbumResponse->assertStatus(404)
+            ->assertJsonPath('code', 'ALBUM_OR_PHOTO_NOT_FOUND');
 
         $crossTenantChildResponse = $this->withHeaders($this->authHeaders($this->staffA))
             ->post('/staff/photos/upload-batch', [
@@ -277,8 +417,8 @@ class StaffAlbumPhotoManagementTest extends TestCase
 
         $this->withHeaders($this->authHeaders($this->staffA))
             ->getJson('/staff/photos/'.$otherPhoto->id)
-            ->assertStatus(403)
-            ->assertJsonPath('code', 'TENANT_SCOPE_VIOLATION');
+            ->assertStatus(404)
+            ->assertJsonPath('code', 'ALBUM_OR_PHOTO_NOT_FOUND');
 
         $this->withHeaders($this->authHeaders($this->staffA))
             ->getJson('/staff/photos/'.str()->ulid())

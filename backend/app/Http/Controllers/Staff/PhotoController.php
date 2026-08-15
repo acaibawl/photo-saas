@@ -5,9 +5,9 @@ namespace App\Http\Controllers\Staff;
 use App\Application\Staff\Photo\PhotoManagementService;
 use App\Domain\Album\Exceptions\AlbumNotFoundException;
 use App\Domain\Album\Exceptions\AlbumTenantScopeViolationException;
+use App\Domain\Child\Exceptions\ChildTenantScopeViolationException;
 use App\Domain\Photo\Exceptions\PhotoNotFoundException;
 use App\Domain\Photo\Exceptions\PhotoNotReadyForUpdateException;
-use App\Domain\Photo\Exceptions\PhotoTenantScopeViolationException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Staff\ListPhotosRequest;
 use App\Http\Requests\Staff\UpdatePhotoRequest;
@@ -39,7 +39,7 @@ class PhotoController extends Controller
             return $this->notFoundResponse();
         } catch (AlbumTenantScopeViolationException) {
             return $this->tenantScopeViolationResponse();
-        } catch (\InvalidArgumentException $exception) {
+        } catch (ChildTenantScopeViolationException $exception) {
             return $this->validationErrorResponse('child_ids', $exception->getMessage());
         }
     }
@@ -56,7 +56,7 @@ class PhotoController extends Controller
             return response()->json($service->getUploadBatchStatus($staff, $uploadRequestId));
         } catch (PhotoNotFoundException|AlbumNotFoundException) {
             return $this->notFoundResponse();
-        } catch (PhotoTenantScopeViolationException|AlbumTenantScopeViolationException) {
+        } catch (AlbumTenantScopeViolationException) {
             return $this->tenantScopeViolationResponse();
         }
     }
@@ -97,7 +97,7 @@ class PhotoController extends Controller
             return $this->notFoundResponse();
         } catch (AlbumTenantScopeViolationException) {
             return $this->tenantScopeViolationResponse();
-        } catch (\InvalidArgumentException $exception) {
+        } catch (ChildTenantScopeViolationException $exception) {
             return $this->validationErrorResponse('child_id', $exception->getMessage());
         }
     }
@@ -114,7 +114,7 @@ class PhotoController extends Controller
             return response()->json($service->findPhotoDetail($staff, $photoId));
         } catch (PhotoNotFoundException|AlbumNotFoundException) {
             return $this->notFoundResponse();
-        } catch (PhotoTenantScopeViolationException|AlbumTenantScopeViolationException) {
+        } catch (AlbumTenantScopeViolationException) {
             return $this->tenantScopeViolationResponse();
         }
     }
@@ -140,14 +140,14 @@ class PhotoController extends Controller
             ));
         } catch (PhotoNotFoundException|AlbumNotFoundException) {
             return $this->notFoundResponse();
-        } catch (PhotoTenantScopeViolationException|AlbumTenantScopeViolationException) {
+        } catch (AlbumTenantScopeViolationException) {
             return $this->tenantScopeViolationResponse();
         } catch (PhotoNotReadyForUpdateException) {
             return response()->json([
                 'message' => 'Photo is not ready for update',
                 'code' => 'PHOTO_NOT_READY_FOR_UPDATE',
             ], 409);
-        } catch (\InvalidArgumentException $exception) {
+        } catch (ChildTenantScopeViolationException $exception) {
             return $this->validationErrorResponse('child_ids', $exception->getMessage());
         }
     }

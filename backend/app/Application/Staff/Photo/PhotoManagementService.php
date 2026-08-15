@@ -3,11 +3,10 @@
 namespace App\Application\Staff\Photo;
 
 use App\Domain\Album\Exceptions\AlbumNotFoundException;
-use App\Jobs\ProcessUploadBatchJob;
-use App\Domain\Album\Exceptions\AlbumTenantScopeViolationException;
+use App\Domain\Child\Exceptions\ChildTenantScopeViolationException;
 use App\Domain\Photo\Exceptions\PhotoNotFoundException;
 use App\Domain\Photo\Exceptions\PhotoNotReadyForUpdateException;
-use App\Domain\Photo\Exceptions\PhotoTenantScopeViolationException;
+use App\Jobs\ProcessUploadBatchJob;
 use App\Models\Album;
 use App\Models\Child;
 use App\Models\KindergartenStaff;
@@ -32,7 +31,7 @@ final class PhotoManagementService
         $album = $albumId !== null ? $this->findAlbumForActor($actor, $albumId) : null;
         $validatedChildIds = $this->validateChildIdsWithinKindergarten($actor, $childIds);
 
-        return DB::transaction(function () use ($actor, $album, $files, $price, $validatedChildIds): array {
+        $uploadRequest = DB::transaction(function () use ($actor, $album, $files, $price, $validatedChildIds): UploadRequest {
             $uploadRequest = UploadRequest::create([
                 'kindergarten_id' => $actor->kindergarten_id,
                 'album_id' => $album?->id,
@@ -43,8 +42,6 @@ final class PhotoManagementService
                 'accepted_count' => 0,
                 'requested_by_staff_id' => $actor->id,
             ]);
-
-            $acceptedCount = 0;
 
             foreach ($files as $file) {
                 if (! $file instanceof UploadedFile) {
@@ -69,43 +66,104 @@ final class PhotoManagementService
                 );
 
                 if ($job->wasRecentlyCreated) {
-                    $acceptedCount++;
-
-                    $extension = $file->extension() !== '' ? $file->extension() : $file->clientExtension();
-                    $filename = $extension !== '' ? $fileKey.'.'.$extension : $fileKey;
-
-                    Storage::disk('s3')->putFileAs(
-                        'uploads/tmp/'.$actor->kindergarten_id.'/'.$uploadRequest->id,
-                        $file,
-                        $filename,
-                    );
+                    $job->refresh();
                 }
             }
 
-            $uploadRequest->forceFill(['accepted_count' => $acceptedCount])->save();
+            return $uploadRequest;
+        });
 
-            ProcessUploadBatchJob::dispatch($uploadRequest->id);
+        $acceptedFiles = [];
+        foreach ($files as $file) {
+            if (! $file instanceof UploadedFile) {
+                continue;
+            }
+
+            $contentHash = hash_file('sha256', $file->getRealPath());
+            $fileKey = hash('sha256', implode(':', [
+                $actor->kindergarten_id,
+                $uploadRequest->id,
+                $contentHash,
+            ]));
+
+            $job = UploadJob::query()->where('upload_request_id', $uploadRequest->id)->where('file_key', $fileKey)->first();
+
+            if ($job === null || $job->status !== 'accepted') {
+                continue;
+            }
+
+            $extension = $file->extension() !== '' ? $file->extension() : $file->clientExtension();
+            $filename = $extension !== '' ? $fileKey.'.'.$extension : $fileKey;
+
+            $uploaded = Storage::disk('s3')->putFileAs(
+                'uploads/tmp/'.$actor->kindergarten_id.'/'.$uploadRequest->id,
+                $file,
+                $filename,
+            );
+
+            if ($uploaded === false) {
+                $job->forceFill([
+                    'status' => 'failed',
+                    'error_message' => 'Failed to store uploaded file in S3.',
+                ])->save();
+
+                $uploadRequest->refresh();
+                $failedJobsCount = $uploadRequest->jobs()->where('status', 'failed')->count();
+                $uploadRequest->forceFill([
+                    'status' => $failedJobsCount > 0 ? 'failed' : 'accepted',
+                    'accepted_count' => max(0, $uploadRequest->accepted_count),
+                ])->save();
+
+                return [
+                    'batch_id' => $uploadRequest->id,
+                    'status' => $uploadRequest->status,
+                    'accepted_count' => $uploadRequest->accepted_count,
+                    'total_files' => $uploadRequest->total_files,
+                    'queued_at' => $uploadRequest->created_at?->toIso8601String(),
+                ];
+            }
+
+            $acceptedFiles[] = $job;
+        }
+
+        $acceptedCount = count($acceptedFiles);
+        $uploadRequest->forceFill(['accepted_count' => $acceptedCount])->save();
+
+        if ($acceptedCount === 0) {
+            $uploadRequest->forceFill(['status' => 'failed'])->save();
 
             return [
                 'batch_id' => $uploadRequest->id,
                 'status' => $uploadRequest->status,
-                'accepted_count' => $acceptedCount,
+                'accepted_count' => 0,
                 'total_files' => $uploadRequest->total_files,
                 'queued_at' => $uploadRequest->created_at?->toIso8601String(),
             ];
+        }
+
+        DB::afterCommit(function () use ($uploadRequest): void {
+            ProcessUploadBatchJob::dispatch($uploadRequest->id);
         });
+
+        return [
+            'batch_id' => $uploadRequest->id,
+            'status' => $uploadRequest->status,
+            'accepted_count' => $acceptedCount,
+            'total_files' => $uploadRequest->total_files,
+            'queued_at' => $uploadRequest->created_at?->toIso8601String(),
+        ];
     }
 
     public function getUploadBatchStatus(KindergartenStaff $actor, string $uploadRequestId): array
     {
-        $uploadRequest = UploadRequest::query()->with('jobs')->whereKey($uploadRequestId)->first();
+        $uploadRequest = UploadRequest::query()
+            ->with('jobs')
+            ->where('id', $uploadRequestId)
+            ->where('kindergarten_id', $actor->kindergarten_id)
+            ->first();
 
         if ($uploadRequest === null) {
             throw new PhotoNotFoundException;
-        }
-
-        if ($uploadRequest->kindergarten_id !== $actor->kindergarten_id) {
-            throw new PhotoTenantScopeViolationException;
         }
 
         return [
@@ -260,16 +318,13 @@ final class PhotoManagementService
         ): array {
             $photo = Photo::query()
                 ->with('taggedChildren')
-                ->whereKey($photoId)
+                ->where('id', $photoId)
+                ->where('kindergarten_id', $actor->kindergarten_id)
                 ->lockForUpdate()
                 ->first();
 
             if ($photo === null) {
                 throw new PhotoNotFoundException;
-            }
-
-            if ($photo->kindergarten_id !== $actor->kindergarten_id) {
-                throw new PhotoTenantScopeViolationException;
             }
 
             if ($photo->preview_status !== 'ready') {
@@ -327,14 +382,13 @@ final class PhotoManagementService
 
     private function findAlbumForActor(KindergartenStaff $actor, string $albumId): Album
     {
-        $album = Album::query()->whereKey($albumId)->first();
+        $album = Album::query()
+            ->where('id', $albumId)
+            ->where('kindergarten_id', $actor->kindergarten_id)
+            ->first();
 
         if ($album === null) {
             throw new AlbumNotFoundException;
-        }
-
-        if ($album->kindergarten_id !== $actor->kindergarten_id) {
-            throw new AlbumTenantScopeViolationException;
         }
 
         return $album;
@@ -342,14 +396,13 @@ final class PhotoManagementService
 
     private function findPhotoForActor(KindergartenStaff $actor, string $photoId): Photo
     {
-        $photo = Photo::query()->whereKey($photoId)->first();
+        $photo = Photo::query()
+            ->where('id', $photoId)
+            ->where('kindergarten_id', $actor->kindergarten_id)
+            ->first();
 
         if ($photo === null) {
             throw new PhotoNotFoundException;
-        }
-
-        if ($photo->kindergarten_id !== $actor->kindergarten_id) {
-            throw new PhotoTenantScopeViolationException;
         }
 
         return $photo;
@@ -376,7 +429,7 @@ final class PhotoManagementService
         sort($expectedChildIds);
 
         if ($validatedChildIds !== $expectedChildIds) {
-            throw new \InvalidArgumentException('One or more child_ids do not belong to the authenticated kindergarten.');
+            throw new ChildTenantScopeViolationException('One or more child_ids do not belong to the authenticated kindergarten.');
         }
 
         return $validatedChildIds;
@@ -402,6 +455,6 @@ final class PhotoManagementService
         /** @var FilesystemAdapter $filesystem */
         $filesystem = Storage::disk($disk);
 
-        return $filesystem->url($path);
+        return $filesystem->temporaryUrl($path, now()->addMinutes(10));
     }
 }
