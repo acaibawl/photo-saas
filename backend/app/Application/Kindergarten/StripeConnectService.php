@@ -327,11 +327,11 @@ final class StripeConnectService
 
             [$key, $value] = $pair;
 
-            if ($key === 't' && is_string($value) && trim($value) !== '') {
+            if ($key === 't' && trim($value) !== '') {
                 $timestamp = $value;
             }
 
-            if ($key === 'v1' && is_string($value) && trim($value) !== '') {
+            if ($key === 'v1' && trim($value) !== '') {
                 $v1Signatures[] = $value;
             }
         }
