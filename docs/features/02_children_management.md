@@ -25,8 +25,10 @@
 | フィールド | 場所 | 型 | 必須 | バリデーション |
 |---|---|---|---|---|
 | name | body | string | 必須 | max:100 |
-| class_name | body | string | 必須 | max:50 |
+| child_class_id | body | string(ULID) | 必須 | 自園の child class であること |
 | status | body | string | 任意 | `enrolled` / `graduated` / `withdrawn`, 省略時 `enrolled` |
+
+> `class_name` は `GET /staff/child-classes` で取得した組レコードの表示名を解決するための派生値であり、リクエストの正本は `child_class_id` とする。
 
 ### Output（201）
 
@@ -97,7 +99,9 @@
 |---|---|---|---|---|
 | child_id | path | string(ULID) | 必須 | 自園に属すること |
 | name | body | string | 任意 | max:100 |
-| class_name | body | string | 任意 | max:50 |
+| child_class_id | body | string(ULID) | 任意 | 自園の child class であること |
+
+> `class_name` を body 入力として直接受け取らず、`child_class_id` に対する解決済みの表示名を扱う。表示レイヤーが必要なら `GET /staff/child-classes` の `name` を使って描画する。
 
 ### Output（200）
 

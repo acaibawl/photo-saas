@@ -12,6 +12,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Guardian\LoginGuardianRequest;
 use App\Http\Requests\Guardian\RefreshGuardianRequest;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 
 class AuthController extends Controller
@@ -117,7 +118,7 @@ class AuthController extends Controller
         return response()->json(['queued' => true], 202);
     }
 
-    public function verifyBySignedUrl(Request $request, GuardianAuthService $service): JsonResponse
+    public function verifyBySignedUrl(Request $request, GuardianAuthService $service): JsonResponse|RedirectResponse
     {
         try {
             $emailVerifiedAt = $service->verifyEmail(
@@ -125,14 +126,54 @@ class AuthController extends Controller
                 (string) $request->route('hash'),
             );
         } catch (\InvalidArgumentException) {
+            if (! $request->expectsJson()) {
+                return $this->redirectToFrontendVerificationResult('invalid');
+            }
+
             return response()->json([
                 'message' => 'Invalid verification link',
             ], 403);
         }
 
+        if (! $request->expectsJson()) {
+            $resultPath = $this->frontendVerificationResultPath('success');
+            $guardian = $request->user('guardian');
+
+            if ($guardian !== null) {
+                return $this->redirectToFrontendPath($resultPath);
+            }
+
+            return $this->redirectToGuardianLogin($resultPath);
+        }
+
         return response()->json([
             'email_verified_at' => $emailVerifiedAt,
         ]);
+    }
+
+    private function frontendVerificationResultPath(string $status): string
+    {
+        return '/guardian/email-verification/result?status='.urlencode($status);
+    }
+
+    private function redirectToFrontendVerificationResult(string $status): RedirectResponse
+    {
+        return $this->redirectToFrontendPath($this->frontendVerificationResultPath($status));
+    }
+
+    private function redirectToFrontendPath(string $path): RedirectResponse
+    {
+        $base = rtrim((string) config('app.frontend_url'), '/');
+
+        return redirect()->away($base.$path);
+    }
+
+    private function redirectToGuardianLogin(string $safeReturnTo): RedirectResponse
+    {
+        $base = rtrim((string) config('app.frontend_url'), '/');
+        $loginUrl = $base.'/guardian/login?return_to='.rawurlencode($safeReturnTo);
+
+        return redirect()->away($loginUrl);
     }
 
     private function resolveRefreshToken(Request $request): ?string

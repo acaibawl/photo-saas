@@ -650,6 +650,57 @@ class GuardianAuthTest extends TestCase
             ->assertJsonPath('email_verified_at', $this->guardian->fresh()->email_verified_at->toIso8601String());
     }
 
+    public function test_guardian_email_verification_redirects_to_result_when_authenticated_browser_request(): void
+    {
+        $this->guardian->forceFill(['email_verified_at' => null])->save();
+
+        $token = JWTAuth::fromUser($this->guardian);
+        $hash = sha1($this->guardian->email);
+        $verificationUrl = URL::temporarySignedRoute(
+            'verification.verify',
+            now()->addMinutes(30),
+            [
+                'id' => $this->guardian->id,
+                'hash' => $hash,
+            ],
+        );
+
+        $response = $this->withHeaders([
+            'Authorization' => 'Bearer '.$token,
+            'Accept' => 'text/html',
+        ])->get($verificationUrl);
+
+        $response->assertRedirect(rtrim((string) config('app.frontend_url'), '/').'/guardian/email-verification/result?status=success');
+
+        $this->assertNotNull($this->guardian->fresh()->email_verified_at);
+    }
+
+    public function test_guardian_email_verification_redirects_to_login_with_safe_return_to_when_unauthenticated_browser_request(): void
+    {
+        $this->guardian->forceFill(['email_verified_at' => null])->save();
+
+        $hash = sha1($this->guardian->email);
+        $verificationUrl = URL::temporarySignedRoute(
+            'verification.verify',
+            now()->addMinutes(30),
+            [
+                'id' => $this->guardian->id,
+                'hash' => $hash,
+            ],
+        );
+
+        $response = $this->withHeaders([
+            'Accept' => 'text/html',
+        ])->get($verificationUrl);
+
+        $expectedReturnTo = '/guardian/email-verification/result?status=success';
+        $expectedLoginUrl = rtrim((string) config('app.frontend_url'), '/').'/guardian/login?return_to='.rawurlencode($expectedReturnTo);
+
+        $response->assertRedirect($expectedLoginUrl);
+
+        $this->assertNotNull($this->guardian->fresh()->email_verified_at);
+    }
+
     public function test_guardian_email_verification_rejects_tampered_expired_and_cross_guardian_urls(): void
     {
         $this->guardian->forceFill(['email_verified_at' => null])->save();
@@ -709,6 +760,39 @@ class GuardianAuthTest extends TestCase
         $crossGuardianResponse->assertStatus(403);
         $this->assertNull($this->guardian->fresh()->email_verified_at);
         $this->assertNull($otherGuardian->fresh()->email_verified_at);
+    }
+
+    public function test_guardian_email_verification_browser_requests_redirect_to_invalid_or_expired_result(): void
+    {
+        $this->guardian->forceFill(['email_verified_at' => null])->save();
+
+        $guardianHash = sha1($this->guardian->email);
+        $validUrl = URL::temporarySignedRoute(
+            'verification.verify',
+            now()->addMinutes(30),
+            [
+                'id' => $this->guardian->id,
+                'hash' => $guardianHash,
+            ],
+        );
+
+        $tamperedUrl = str_replace($guardianHash, sha1('tampered@example.com'), $validUrl);
+        $tamperedResponse = $this->withHeaders(['Accept' => 'text/html'])->get($tamperedUrl);
+
+        $tamperedResponse->assertRedirect(rtrim((string) config('app.frontend_url'), '/').'/guardian/email-verification/result?status=invalid');
+
+        $expiredUrl = URL::temporarySignedRoute(
+            'verification.verify',
+            now()->subMinute(),
+            [
+                'id' => $this->guardian->id,
+                'hash' => $guardianHash,
+            ],
+        );
+        $expiredResponse = $this->withHeaders(['Accept' => 'text/html'])->get($expiredUrl);
+
+        $expiredResponse->assertRedirect(rtrim((string) config('app.frontend_url'), '/').'/guardian/email-verification/result?status=expired');
+        $this->assertNull($this->guardian->fresh()->email_verified_at);
     }
 
     private function extractRefreshToken(TestResponse $response): string
