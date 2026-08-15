@@ -13,6 +13,7 @@ use App\Http\Controllers\Staff\GuardianLinkController;
 use App\Http\Controllers\Staff\PhotoController;
 use App\Http\Controllers\Staff\StaffInvitationController;
 use App\Http\Controllers\Staff\StaffMemberController;
+use App\Http\Controllers\Staff\StripeConnectController;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Route;
 
@@ -31,6 +32,15 @@ Route::prefix('/staff/auth')->group(function (): void {
 
 Route::prefix('/staff')->middleware('auth:staff')->group(function (): void {
     Route::post('/albums', [AlbumController::class, 'store']);
+
+    Route::prefix('/stripe')->group(function (): void {
+        Route::prefix('/connect')->group(function (): void {
+            Route::post('/onboarding-link', [StripeConnectController::class, 'onboardingLink']);
+            Route::get('/status', [StripeConnectController::class, 'status']);
+        });
+    });
+
+    Route::get('/sales/availability', [StripeConnectController::class, 'salesAvailability']);
 
     Route::post('/children', [ChildController::class, 'store']);
     Route::get('/children', [ChildController::class, 'index']);
