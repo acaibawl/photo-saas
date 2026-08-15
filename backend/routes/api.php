@@ -4,11 +4,13 @@ use App\Http\Controllers\Guardian\AuthController as GuardianAuthController;
 use App\Http\Controllers\Guardian\GuardianLinkController as GuardianGuardianLinkController;
 use App\Http\Controllers\PublicApi\ChildInvitationPublicController;
 use App\Http\Controllers\PublicApi\StaffInvitationPublicController;
+use App\Http\Controllers\Staff\AlbumController;
 use App\Http\Controllers\Staff\AuthController;
 use App\Http\Controllers\Staff\ChildClassController;
 use App\Http\Controllers\Staff\ChildController;
 use App\Http\Controllers\Staff\ChildInvitationController;
 use App\Http\Controllers\Staff\GuardianLinkController;
+use App\Http\Controllers\Staff\PhotoController;
 use App\Http\Controllers\Staff\StaffInvitationController;
 use App\Http\Controllers\Staff\StaffMemberController;
 use Illuminate\Http\JsonResponse;
@@ -28,11 +30,19 @@ Route::prefix('/staff/auth')->group(function (): void {
 });
 
 Route::prefix('/staff')->middleware('auth:staff')->group(function (): void {
+    Route::post('/albums', [AlbumController::class, 'store']);
+
     Route::post('/children', [ChildController::class, 'store']);
     Route::get('/children', [ChildController::class, 'index']);
     Route::get('/children/{childId}', [ChildController::class, 'show']);
     Route::patch('/children/{childId}', [ChildController::class, 'update']);
     Route::patch('/children/{childId}/status', [ChildController::class, 'status']);
+
+    Route::post('/photos/upload-batch', [PhotoController::class, 'uploadBatch']);
+    Route::get('/photos/upload-batch/{uploadRequestId}', [PhotoController::class, 'batchStatus']);
+    Route::get('/photos', [PhotoController::class, 'index']);
+    Route::get('/photos/{photoId}', [PhotoController::class, 'show']);
+    Route::patch('/photos/{photoId}', [PhotoController::class, 'update']);
 
     Route::post('/child-classes', [ChildClassController::class, 'store']);
     Route::get('/child-classes', [ChildClassController::class, 'index']);
