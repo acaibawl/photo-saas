@@ -5,6 +5,7 @@ use App\Http\Controllers\Guardian\GuardianLinkController as GuardianGuardianLink
 use App\Http\Controllers\Guardian\PhotoController as GuardianPhotoController;
 use App\Http\Controllers\Guardian\PurchaseController as GuardianPurchaseController;
 use App\Http\Controllers\PublicApi\ChildInvitationPublicController;
+use App\Http\Controllers\PublicApi\PurchaseWebhookController;
 use App\Http\Controllers\PublicApi\StaffInvitationPublicController;
 use App\Http\Controllers\Staff\AlbumController;
 use App\Http\Controllers\Staff\AuthController;
@@ -84,6 +85,8 @@ Route::prefix('/staff')->middleware('auth:staff')->group(function (): void {
 });
 
 Route::prefix('/public')->group(function (): void {
+    Route::post('/stripe/webhook', [PurchaseWebhookController::class, 'stripe']);
+
     Route::get('/invitations/{rawToken}', [ChildInvitationPublicController::class, 'preview'])
         ->middleware('throttle:60,1');
     Route::post('/invitations/{rawToken}/accept', [ChildInvitationPublicController::class, 'accept'])

@@ -19,6 +19,7 @@ use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 
@@ -27,7 +28,7 @@ final class GuardianPurchaseService
     public function __construct(private readonly GuardianPhotoService $photoService) {}
 
     /**
-     * @param array<int, string> $photoIds
+     * @param  array<int, string>  $photoIds
      */
     public function createCheckoutSession(
         Guardian $guardian,
@@ -38,7 +39,12 @@ final class GuardianPurchaseService
     ): array {
         $uniquePhotoIds = array_values(array_unique(array_map(static fn (mixed $photoId): string => (string) $photoId, $photoIds)));
 
-        return DB::transaction(function () use ($guardian, $uniquePhotoIds, $checkoutAmount, $successUrl, $cancelUrl): array {
+        $pendingCheckout = DB::transaction(function () use ($guardian, $uniquePhotoIds, $checkoutAmount): array {
+            Guardian::query()
+                ->whereKey($guardian->id)
+                ->lockForUpdate()
+                ->first();
+
             $photos = $this->resolvePurchasablePhotos($guardian, $uniquePhotoIds);
 
             if ($photos->count() !== count($uniquePhotoIds)) {
@@ -62,6 +68,15 @@ final class GuardianPurchaseService
             if (Entitlement::query()
                 ->where('guardian_id', $guardian->id)
                 ->whereIn('photo_id', $uniquePhotoIds)
+                ->exists()) {
+                throw new OrderAlreadyPaidOrClosedException;
+            }
+
+            if (OrderItem::query()
+                ->join('orders', 'orders.id', '=', 'order_items.order_id')
+                ->where('orders.guardian_id', $guardian->id)
+                ->where('orders.status', 'pending')
+                ->whereIn('order_items.photo_id', $uniquePhotoIds)
                 ->exists()) {
                 throw new OrderAlreadyPaidOrClosedException;
             }
@@ -91,6 +106,25 @@ final class GuardianPurchaseService
                 ]);
             }
 
+            return [
+                'order' => $order,
+                'kindergarten' => $kindergarten,
+                'photos' => $photos,
+                'total_amount' => $totalAmount,
+                'platform_fee_amount' => $platformFeeAmount,
+            ];
+        });
+
+        /** @var Order $order */
+        $order = $pendingCheckout['order'];
+        /** @var Kindergarten $kindergarten */
+        $kindergarten = $pendingCheckout['kindergarten'];
+        /** @var EloquentCollection<int, Photo> $photos */
+        $photos = $pendingCheckout['photos'];
+        $totalAmount = $pendingCheckout['total_amount'];
+        $platformFeeAmount = $pendingCheckout['platform_fee_amount'];
+
+        try {
             $checkoutSession = $this->createStripeCheckoutSession(
                 order: $order,
                 kindergarten: $kindergarten,
@@ -103,15 +137,19 @@ final class GuardianPurchaseService
             $order->forceFill([
                 'stripe_checkout_session_id' => $checkoutSession['id'],
             ])->save();
+        } catch (RuntimeException $exception) {
+            $this->markOrderAsFailed($order);
 
-            return [
-                'order_id' => $order->id,
-                'checkout_session_id' => $checkoutSession['id'],
-                'checkout_url' => $checkoutSession['url'],
-                'total_amount' => $totalAmount,
-                'currency' => 'jpy',
-            ];
-        });
+            throw $exception;
+        }
+
+        return [
+            'order_id' => $order->id,
+            'checkout_session_id' => $checkoutSession['id'],
+            'checkout_url' => $checkoutSession['url'],
+            'total_amount' => $totalAmount,
+            'currency' => 'jpy',
+        ];
     }
 
     public function listOrders(
@@ -174,7 +212,9 @@ final class GuardianPurchaseService
             ->where('photo_id', $photoId)
             ->first();
 
-        if (! $entitlement instanceof Entitlement || $entitlement->photo->storage_path === null || $entitlement->photo->storage_path === '') {
+        $storagePath = $entitlement instanceof Entitlement ? data_get($entitlement, 'photo.storage_path') : null;
+
+        if (! $entitlement instanceof Entitlement || $storagePath === null || $storagePath === '') {
             throw new EntitlementNotFoundException;
         }
 
@@ -183,7 +223,7 @@ final class GuardianPurchaseService
         $filesystem = Storage::disk('s3');
 
         return [
-            'download_url' => $filesystem->temporaryUrl($entitlement->photo->storage_path, $expiresAt),
+            'download_url' => $filesystem->temporaryUrl($storagePath, $expiresAt),
             'expires_at' => $expiresAt->toIso8601String(),
         ];
     }
@@ -199,13 +239,26 @@ final class GuardianPurchaseService
         $minimumAmount = (int) config('purchase.platform_fee_min_amount');
         $maximumAmount = (int) config('purchase.platform_fee_max_amount');
 
-        $calculatedAmount = (int) round($totalAmount * $rate);
+        if ($minimumAmount > $maximumAmount) {
+            [$minimumAmount, $maximumAmount] = [$maximumAmount, $minimumAmount];
+        }
 
-        return max($minimumAmount, min($calculatedAmount, $maximumAmount));
+        $calculatedAmount = (int) round($totalAmount * $rate);
+        $boundedAmount = max($minimumAmount, min($calculatedAmount, $maximumAmount));
+
+        return min($boundedAmount, $totalAmount);
+    }
+
+    private function markOrderAsFailed(Order $order): void
+    {
+        Order::query()
+            ->whereKey($order->id)
+            ->where('status', 'pending')
+            ->update(['status' => 'failed']);
     }
 
     /**
-     * @param array<int, string> $photoIds
+     * @param  array<int, string>  $photoIds
      * @return EloquentCollection<int, Photo>
      */
     private function resolvePurchasablePhotos(Guardian $guardian, array $photoIds): EloquentCollection
@@ -234,7 +287,7 @@ final class GuardianPurchaseService
     }
 
     /**
-     * @param EloquentCollection<int, Photo> $photos
+     * @param  EloquentCollection<int, Photo>  $photos
      * @return array{id: string, url: string}
      */
     private function createStripeCheckoutSession(
@@ -264,6 +317,11 @@ final class GuardianPurchaseService
 
         $response = Http::asForm()
             ->withToken($secret)
+            ->connectTimeout(5)
+            ->timeout(30)
+            ->withHeaders([
+                'Idempotency-Key' => 'guardian-order-'.$order->id,
+            ])
             ->post('https://api.stripe.com/v1/checkout/sessions', [
                 'mode' => 'payment',
                 'success_url' => $successUrl,
@@ -287,6 +345,17 @@ final class GuardianPurchaseService
             ]);
 
         if ($response->failed()) {
+            $responseBody = $response->json() ?? [];
+            $errorCode = data_get($responseBody, 'error.code');
+            $errorCodeText = is_string($errorCode) && trim($errorCode) !== '' ? $errorCode : 'unknown';
+
+            Log::error('Stripe API request failed', [
+                'path' => '/v1/checkout/sessions',
+                'status' => $response->status(),
+                'error_code' => $errorCodeText,
+                'response_body' => $responseBody,
+            ]);
+
             throw new RuntimeException('Stripe checkout session creation failed');
         }
 

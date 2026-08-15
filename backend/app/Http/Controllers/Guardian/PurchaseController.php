@@ -97,11 +97,11 @@ class PurchaseController extends Controller
         return response()->json([
             'data' => collect($paginator->items())->map(static fn ($entitlement) => [
                 'photo_id' => $entitlement->photo_id,
-                'album_id' => $entitlement->photo->album_id,
+                'album_id' => $entitlement->photo?->album_id,
                 'downloadable' => true,
                 'purchased_at' => $entitlement->granted_at?->toIso8601String(),
-                'event_date' => $entitlement->photo->album?->event_date?->toDateString(),
-                'preview_url' => $service->previewUrlForPhoto($entitlement->photo->preview_path),
+                'event_date' => $entitlement->photo?->album?->event_date?->toDateString(),
+                'preview_url' => $service->previewUrlForPhoto($entitlement->photo?->preview_path),
             ])->values()->all(),
             'meta' => [
                 'current_page' => $paginator->currentPage(),
