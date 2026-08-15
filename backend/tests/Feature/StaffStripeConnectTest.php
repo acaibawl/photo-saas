@@ -80,7 +80,7 @@ class StaffStripeConnectTest extends TestCase
 
         $response->assertStatus(422)
             ->assertJsonPath('code', 'VALIDATION_ERROR')
-            ->assertJsonPath('errors.return_url.0', 'validation.starts_with');
+            ->assertJsonPath('errors.return_url.0', 'return url は次のいずれかで始まる必要があります。：https://');
     }
 
     public function test_status_returns_default_values_when_account_is_missing(): void
