@@ -25,11 +25,6 @@ export default withNuxt(
         },
       ],
 
-      // Useful for Nuxt/Vue + TS without forcing over-strict style.
-      '@typescript-eslint/consistent-type-imports': [
-        'warn',
-        { prefer: 'type-imports', fixStyle: 'inline-type-imports' },
-      ],
       // Keep template attribute order predictable across the team.
       'vue/attributes-order': [
         'warn',
@@ -53,5 +48,15 @@ export default withNuxt(
       'vue/multi-word-component-names': 'off',
       'vue/require-default-prop': 'off',
     },
-  }
+  },
+  {
+    files: ['**/*.ts', '**/*.tsx'],
+    rules: {
+      // This rule needs TS parser services, so limit it to TS files.
+      '@typescript-eslint/consistent-type-imports': [
+        'warn',
+        { prefer: 'type-imports', fixStyle: 'inline-type-imports' },
+      ],
+    },
+  },
 )
