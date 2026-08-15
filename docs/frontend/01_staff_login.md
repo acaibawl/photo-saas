@@ -26,7 +26,7 @@
 
 ## 送信フロー
 
-1. フォームバリデーション（空チェック、email形式）
+1. フォームバリデーション（空チェック、email形式、email は最大 255 文字、password は 8〜72 文字）
 2. `POST /staff/auth/login`
 3. 成功時に `access_token` を Pinia に保存
 4. `GET /staff/auth/me` で `role` と `kindergarten_id` を取得

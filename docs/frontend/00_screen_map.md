@@ -37,14 +37,17 @@
 - 認証ヘッダ: `Authorization: Bearer {access_token}`（ログイン後の API）
 - access token: Pinia（メモリ）保持
 - refresh token: httpOnly Cookie（JSから参照しない）
-- 401 受信時: 1回だけ `POST /staff/auth/refresh` または `POST /guardian/auth/refresh` を試行し、成功時にリトライ
+- アプリ起動時は `GET /staff/auth/me` または `GET /guardian/auth/me` を使わず、`POST /staff/auth/refresh` / `POST /guardian/auth/refresh` を使って httpOnly Cookie からセッションを復元する
+- 認証ガードは「セッション復元完了」後にのみ `access_token` の有無と role/guard を判定し、復元前にガードが失敗判定して再試行ループを起こさない
+- 401 受信時: `single-flight` で 1 回だけ `POST /staff/auth/refresh` または `POST /guardian/auth/refresh` を実行し、同時に複数の 401 を受けても一度だけ再試行する
+- refresh 失敗時は `access_token` を破棄し、ログイン画面へ遷移して `retry` フラグを止める
 - 403 は権限不足として画面遷移または操作無効化
 - 422 は項目エラーをフォームにマッピング
 - API エラー形式は `error.code` で分岐し、文言を画面で統一
 
 ## 既知の注意点
 
-- メール確認完了 API は仕様書に `POST /guardian/auth/email/verify` とあるが、現実装ルートは `GET /guardian/auth/email/verify/{id}/{hash}`（署名付きURL）である。
+- メール確認完了の実装は `GET /guardian/auth/email/verify/{id}/{hash}`（署名付きURL）を正とし、結果画面ルートと `status=success|expired|invalid` の解釈は `17_guardian_email_verification.md` に従う。
 - 実装時は `backend/routes/api.php` を最優先に合わせる。
 
 ## 推奨実装順序（スムーズ実装向け）

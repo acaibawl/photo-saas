@@ -15,7 +15,7 @@
 | 保護者ログイン | POST | `/guardian/auth/login` |
 | アクセストークン更新 | POST | `/guardian/auth/refresh` |
 | メール確認要求 | POST | `/guardian/auth/email/verification-notification` |
-| メール確認完了 | POST | `/guardian/auth/email/verify` |
+| メール確認完了 | GET | `/guardian/auth/email/verify/{id}/{hash}` |
 
 ## 1) 招待プレビュー取得
 
@@ -137,17 +137,17 @@
 
 ### 5-2) 確認完了
 
-**Method / Path**: `POST /guardian/auth/email/verify`  
-**Auth**: 不要（署名トークン検証）
+**Method / Path**: `GET /guardian/auth/email/verify/{id}/{hash}`  
+**Auth**: 不要（署名付きURLを `signed` middleware で検証）
 
 | フィールド | 場所 | 型 | 必須 | バリデーション |
 |---|---|---|---|---|
-| id | body | string(ULID) | 必須 | guardians存在 |
-| hash | body | string | 必須 | メール確認ハッシュ一致 |
-| signature | body | string | 必須 | 署名有効 |
-| expires | body | integer | 必須 | 有効期限内 |
+| id | path | string(ULID) | 必須 | guardians存在 |
+| hash | path | string | 必須 | メール確認ハッシュ一致 |
+| signature | query | string | 必須 | 署名有効 |
+| expires | query | integer | 必須 | 有効期限内 |
 
-**Output（200）**: `{ "email_verified_at": "datetime" }`
+**Output（200）**: メール確認完了レスポンス（`email_verified_at` を含む）または完了画面へのリダイレクト
 
 ## 共通エラー
 

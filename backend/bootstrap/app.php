@@ -5,6 +5,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Exceptions\InvalidSignatureException;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -29,5 +30,25 @@ return Application::configure(basePath: dirname(__DIR__))
                 'message' => $isGuardianRoute ? 'Guardian authentication is required' : 'Staff authentication is required',
                 'code' => $isGuardianRoute ? 'GUARDIAN_AUTH_REQUIRED' : 'STAFF_AUTH_REQUIRED',
             ], 401);
+        });
+
+        $exceptions->render(function (InvalidSignatureException $exception, Request $request) {
+            if ($request->is('guardian/auth/email/verify/*')) {
+                if ($request->expectsJson()) {
+                    return response()->json([
+                        'message' => 'Invalid verification link',
+                    ], 403);
+                }
+
+                $expires = $request->query('expires');
+                $isExpired = is_string($expires) && ctype_digit($expires) && now()->timestamp > (int) $expires;
+                $status = $isExpired ? 'expired' : 'invalid';
+
+                $frontendUrl = rtrim((string) config('app.frontend_url'), '/');
+
+                return redirect()->away($frontendUrl.'/guardian/email-verification/result?status='.$status);
+            }
+
+            return null;
         });
     })->create();

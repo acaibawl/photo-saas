@@ -27,6 +27,12 @@
 4. `GET /guardian/children`
 5. `/guardian` へ遷移
 
+## ログアウト時の挙動
+
+- ログアウト操作では `auth store` の access token とユーザー状態をクリアする
+- `refresh_token` Cookie を削除し、ブラウザ側の認証情報を無効化する
+- 実際のサーバー側では `POST /guardian/auth/logout` を呼び、refresh token を失効させて Cookie を server-side で期限切れ扱いにする
+
 ## エラー処理
 
 - `401`: 認証失敗

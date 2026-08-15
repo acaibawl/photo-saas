@@ -24,14 +24,20 @@
 ## 購入フロー
 
 1. 詳細取得
-2. ボタン押下時に `photo_ids=[photoId]` で checkout session 作成
+2. ボタン押下時に `photo_ids=[photoId]` で checkout session 作成（`success_url` / `cancel_url` はクライアントから渡さない）
 3. `checkout_url` にリダイレクト
 
 ## 購入リクエスト
 
 - `photo_ids`: 対象写真ID配列
 - `checkout_amount`: 画面表示価格（サーバー再計算で検証）
-- `success_url`, `cancel_url`: このフロントの結果画面URL
+- `success_url`, `cancel_url`: クライアント入力として送信しない。サーバー側で固定した結果画面URLを Stripe Checkout に設定する
+
+### リダイレクトURLのセキュリティ方針
+
+- 第一方針: サーバー側で `success_url` / `cancel_url` を固定値にし、クライアントから任意入力を受け付けない
+- 固定が難しい場合: 許可済みの同一オリジンURLのみ受け入れる（パス単位の allowlist 推奨）
+- 任意の外部URL（別オリジン）へのリダイレクトは常に拒否する
 
 ## エラー処理
 

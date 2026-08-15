@@ -23,9 +23,16 @@
 ## FormField props
 
 - label: string
+- fieldKey?: string
 - required?: boolean
 - error?: string
 - hint?: string
+
+### フィールドエラー解決ルール（422）
+
+- 本設計では「親コンポーネントが 422 レスポンスを解釈し、各フィールドに対応する `error` 文字列を渡す」方式を採用する。
+- `FormField` は `error` をそのまま表示し、422 レスポンス全体のパースは担当しない。
+- `fieldKey` は親側のマッピング処理で使用するキー（例: `email`, `password`, `child_class_id`）を明示する補助情報として利用する。
 
 ## Text/Select/Password 共通props
 
@@ -41,4 +48,4 @@
 
 ## 実装メモ
 
-- API の 422 エラーを field key でマッピングしやすい構造に揃える。
+- API の 422 エラー（`errors[fieldKey][0]`）を親で解決し、各 `FormField` の `error` に渡す。

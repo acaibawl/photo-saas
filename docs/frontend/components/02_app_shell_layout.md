@@ -32,7 +32,8 @@
 
 - モバイルでドロワーナビを提供
 - PC ではサイドナビ常時表示
-- ログアウト時は auth store を破棄してログイン画面へ遷移
+- ログアウト時は先にサーバー側ログアウト API（staff: `POST /staff/auth/logout`、guardian: `POST /guardian/auth/logout`）を呼び出し、refresh token の失効または httpOnly Cookie の削除を行う
+- API 完了後に auth store を破棄し、ログイン画面へ遷移する（順序: `logout API` → `auth store clear` → `redirect`）
 
 ## 実装メモ
 

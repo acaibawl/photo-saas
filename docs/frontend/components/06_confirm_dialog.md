@@ -27,12 +27,16 @@
 ## events
 
 - confirm
+	- payload: `{ confirm_text: string }`
+	- `requireText` が指定される場合、入力値をそのまま `confirm_text` として emit する
+	- 親コンポーネントはこの payload をそのまま API body に渡す（再マッピングしない）
 - cancel
 - update:open
 
 ## 特記事項
 
-- 紐づけ解除 API は confirm_text=UNLINK が必須のため、requireText に UNLINK を指定可能にする。
+- 紐づけ解除 API は `confirm_text=UNLINK` が必須のため、`requireText` には必ず `UNLINK` を設定する。
+- `confirm` は `confirm_text` を大文字小文字を含めて入力値そのままで返す。`UNLINK` 以外は親側で送信しない。
 
 ## 実装メモ
 

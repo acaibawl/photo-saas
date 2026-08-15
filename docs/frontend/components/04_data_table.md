@@ -32,7 +32,13 @@
 ## events
 
 - rowClick
+	- payload: `{ row, rowKey }`
+	- `row`: クリックされた行オブジェクト（`rows` の1要素）
+	- `rowKey`: `row[rowKey]` から解決した識別子
 - sortChange
+	- payload: `{ key, direction }`
+	- `key`: ソート対象の列キー（`columns[].key`）
+	- `direction`: `asc | desc | null`（`null` はソート解除）
 
 ## 実装メモ
 

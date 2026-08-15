@@ -17,14 +17,15 @@
 ## 表示項目
 
 - ログインユーザー名、ロール
-- 販売可否ステータス
+- 販売可否ステータス（ownerのみ）
 - Stripeオンボーディング進捗（ownerのみ）
 - 主要メニューリンク
 
 ## 挙動
 
-- `role=staff` では Stripe 設定カードを非表示
-- `sales_enabled=false` の場合、写真販売関連UIに警告表示
+- `role=staff` では Stripe 設定カードと販売可否カードを非表示
+- `role=owner` のみ `sales_enabled=false` の場合、写真販売関連UIに警告表示
+- `403 STAFF_ROLE_FORBIDDEN` の場合、owner限定の販売ステータスと警告表示を非表示にする
 
 ## エラー処理
 

@@ -36,5 +36,11 @@
 
 ## エラー処理
 
-- `404 ENTITLEMENT_NOT_FOUND`
-- `401 GUARDIAN_AUTH_REQUIRED`
+- 共通
+	- `401 GUARDIAN_AUTH_REQUIRED`
+- `GET /guardian/purchased-photos`
+	- entitlement が1件もない場合は `200` で空配列（`data=[]`）を返す
+	- エラーではなく空状態として扱い、「購入済み写真はまだありません」を表示する
+- `POST /guardian/photos/{photoId}/download-url`
+	- entitlement 不在の場合は `404 ENTITLEMENT_NOT_FOUND` を返す
+	- entitlement は存在していても `storage_path` が空の場合、現行実装では同じく `404 ENTITLEMENT_NOT_FOUND` を返す

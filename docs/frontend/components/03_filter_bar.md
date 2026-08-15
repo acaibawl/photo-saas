@@ -7,7 +7,7 @@
 ## 対象
 
 - component: FilterBar
-- sub-components: FilterSelect, FilterDateRange, FilterKeyword
+- sub-components: FilterSelect, FilterDateRange, FilterNumberRange, FilterKeyword
 
 ## 想定利用画面
 
@@ -36,6 +36,11 @@
 - label: string
 - options?: Array<{ label, value }>
 - placeholder?: string
+- fromKey?: string（`numberRange` の下限クエリキー。既定: `${key}_min`）
+- toKey?: string（`numberRange` の上限クエリキー。既定: `${key}_max`）
+- min?: number（`numberRange` の入力下限）
+- max?: number（`numberRange` の入力上限）
+- step?: number（`numberRange` の入力刻み）
 
 ## 実装メモ
 
