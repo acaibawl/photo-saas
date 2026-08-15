@@ -22,9 +22,12 @@ return Application::configure(basePath: dirname(__DIR__))
         );
 
         $exceptions->render(function (AuthenticationException $exception, Request $request) {
+            $guards = $exception->guards();
+            $isGuardianRoute = in_array('guardian', $guards, true);
+
             return response()->json([
-                'message' => 'Staff authentication is required',
-                'code' => 'STAFF_AUTH_REQUIRED',
+                'message' => $isGuardianRoute ? 'Guardian authentication is required' : 'Staff authentication is required',
+                'code' => $isGuardianRoute ? 'GUARDIAN_AUTH_REQUIRED' : 'STAFF_AUTH_REQUIRED',
             ], 401);
         });
     })->create();
