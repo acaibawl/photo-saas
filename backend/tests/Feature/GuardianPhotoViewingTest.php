@@ -33,6 +33,8 @@ class GuardianPhotoViewingTest extends TestCase
 
     private Child $childB;
 
+    private Child $unrelatedChild;
+
     private Child $otherKindergartenChild;
 
     private Album $albumA;
@@ -73,6 +75,11 @@ class GuardianPhotoViewingTest extends TestCase
             'name' => 'うさぎ組',
         ]);
 
+        $unrelatedClass = ChildClass::create([
+            'kindergarten_id' => $this->kindergartenA->id,
+            'name' => '非公開組',
+        ]);
+
         $this->childA = Child::create([
             'child_class_id' => $childClassA->id,
             'name' => '山田花子',
@@ -82,6 +89,12 @@ class GuardianPhotoViewingTest extends TestCase
         $this->childB = Child::create([
             'child_class_id' => $childClassB->id,
             'name' => '佐藤太郎',
+            'status' => 'enrolled',
+        ]);
+
+        $this->unrelatedChild = Child::create([
+            'child_class_id' => $unrelatedClass->id,
+            'name' => '非公開園児',
             'status' => 'enrolled',
         ]);
 
@@ -187,7 +200,11 @@ class GuardianPhotoViewingTest extends TestCase
             'uploaded_by_staff_id' => $this->staff->id,
         ]);
 
-        $this->sharedAlbumPhoto->taggedChildren()->sync([$this->childA->id, $this->childB->id]);
+        $this->sharedAlbumPhoto->taggedChildren()->sync([
+            $this->childA->id,
+            $this->childB->id,
+            $this->unrelatedChild->id,
+        ]);
         Storage::disk('s3')->put('photos/previews/shared.jpg', 'preview');
 
         $this->otherKindergartenPhoto = Photo::create([
@@ -258,9 +275,16 @@ class GuardianPhotoViewingTest extends TestCase
         $previewResponse = $this->withHeaders($this->guardianAuthHeaders())
             ->postJson('/guardian/photos/'.$this->visiblePhoto->id.'/preview-url');
 
-        $previewResponse->assertOk()
-            ->assertJsonPath('preview_url', $detailResponse->json('preview_url'))
-            ->assertJsonPath('expires_at', $previewResponse->json('expires_at'));
+        $previewResponse->assertOk();
+
+        $previewUrl = $previewResponse->json('preview_url');
+        $expiresAt = $previewResponse->json('expires_at');
+
+        $this->assertIsString($previewUrl);
+        $this->assertMatchesRegularExpression('/^https?:\/\/[^\s]+$/', $previewUrl);
+
+        $this->assertIsString($expiresAt);
+        $this->assertMatchesRegularExpression('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $expiresAt);
     }
 
     public function test_guardian_gets_access_denied_for_other_child_and_not_found_for_missing_photo(): void
@@ -276,6 +300,38 @@ class GuardianPhotoViewingTest extends TestCase
 
         $missingResponse->assertStatus(404)
             ->assertJsonPath('code', 'PHOTO_NOT_FOUND');
+    }
+
+    public function test_unrelated_tagged_children_are_hidden_from_list_and_detail_responses(): void
+    {
+        $listResponse = $this->withHeaders($this->guardianAuthHeaders())
+            ->getJson('/guardian/photos?album_id='.$this->albumA->id);
+
+        $listResponse->assertOk();
+
+        $sharedPhoto = collect($listResponse->json('data'))
+            ->firstWhere('photo_id', $this->sharedAlbumPhoto->id);
+
+        $this->assertIsArray($sharedPhoto);
+        $this->assertNotNull($sharedPhoto);
+        $this->assertContains($this->childA->id, $sharedPhoto['tagged_child_ids']);
+        $this->assertContains($this->childB->id, $sharedPhoto['tagged_child_ids']);
+        $this->assertNotContains($this->unrelatedChild->id, $sharedPhoto['tagged_child_ids']);
+
+        $detailResponse = $this->withHeaders($this->guardianAuthHeaders())
+            ->getJson('/guardian/photos/'.$this->sharedAlbumPhoto->id);
+
+        $detailResponse->assertOk()
+            ->assertJsonMissing(['child_id' => $this->unrelatedChild->id])
+            ->assertJsonMissing(['name' => '非公開園児'])
+            ->assertJsonMissing(['class_name' => '非公開組']);
+
+        $taggedChildren = $detailResponse->json('tagged_children');
+        $childIds = array_column($taggedChildren, 'child_id');
+
+        $this->assertContains($this->childA->id, $childIds);
+        $this->assertContains($this->childB->id, $childIds);
+        $this->assertNotContains($this->unrelatedChild->id, $childIds);
     }
 
     private function guardianAuthHeaders(): array

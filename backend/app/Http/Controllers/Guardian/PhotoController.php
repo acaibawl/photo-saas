@@ -47,6 +47,8 @@ class PhotoController extends Controller
         }
 
         try {
+            $visibleChildIds = $service->activeChildIds($guardian);
+
             $paginator = $service->listPhotos(
                 $guardian,
                 $request->string('child_id')->toString() !== '' ? $request->string('child_id')->toString() : null,
@@ -64,7 +66,11 @@ class PhotoController extends Controller
                     'price' => $photo->price,
                     'preview_url' => $service->previewUrlFor($photo->preview_path),
                     'event_date' => $photo->album?->event_date?->toDateString(),
-                    'tagged_child_ids' => $photo->taggedChildren->pluck('id')->values()->all(),
+                    'tagged_child_ids' => $photo->taggedChildren
+                        ->pluck('id')
+                        ->filter(fn ($childId): bool => $visibleChildIds->contains($childId))
+                        ->values()
+                        ->all(),
                 ], $paginator->items()),
                 'meta' => [
                     'current_page' => $paginator->currentPage(),

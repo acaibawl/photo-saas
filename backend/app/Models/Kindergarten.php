@@ -14,6 +14,7 @@ use Illuminate\Support\Carbon;
  * @property string $name
  * @property string $slug
  * @property string|null $stripe_account_id
+ * @property string|null $stripe_account_creation_idempotency_key
  * @property Carbon|null $stripe_onboarding_completed_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
@@ -44,12 +45,13 @@ use Illuminate\Support\Carbon;
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Kindergarten whereName($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Kindergarten whereSlug($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Kindergarten whereStripeAccountId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Kindergarten whereStripeAccountCreationIdempotencyKey($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Kindergarten whereStripeOnboardingCompletedAt($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Kindergarten whereUpdatedAt($value)
  *
  * @mixin \Eloquent
  */
-#[Fillable(['name', 'slug', 'stripe_account_id', 'stripe_onboarding_completed_at'])]
+#[Fillable(['name', 'slug', 'stripe_account_id', 'stripe_account_creation_idempotency_key', 'stripe_onboarding_completed_at'])]
 class Kindergarten extends Model
 {
     use HasUlids;

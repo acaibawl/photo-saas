@@ -9,6 +9,7 @@ use App\Models\Guardian;
 use App\Models\GuardianChild;
 use App\Models\Photo;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Collection;
 use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Support\Facades\Storage;
 
@@ -119,6 +120,8 @@ final class GuardianPhotoService
             throw new PhotoAccessDeniedException;
         }
 
+        $visibleChildIds = $this->activeChildIds($guardian);
+
         return [
             'photo_id' => $photo->id,
             'album' => [
@@ -128,6 +131,7 @@ final class GuardianPhotoService
             'price' => $photo->price,
             'preview_url' => $this->previewUrlFor($photo->preview_path),
             'tagged_children' => $photo->taggedChildren
+                ->filter(fn ($child): bool => $visibleChildIds->contains($child->id))
                 ->map(fn ($child): array => [
                     'child_id' => $child->id,
                     'name' => $child->name,
@@ -214,5 +218,13 @@ final class GuardianPhotoService
         $filesystem = Storage::disk('s3');
 
         return $filesystem->temporaryUrl($path, now()->addMinutes(10));
+    }
+
+    public function activeChildIds(Guardian $guardian): Collection
+    {
+        return GuardianChild::query()
+            ->where('guardian_id', $guardian->id)
+            ->whereNull('unlinked_at')
+            ->pluck('child_id');
     }
 }
