@@ -4,7 +4,9 @@ namespace App\Application\Kindergarten;
 
 use App\Models\Kindergarten;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use JsonException;
 use RuntimeException;
@@ -13,19 +15,9 @@ final class StripeConnectService
 {
     private const STRIPE_API_BASE = 'https://api.stripe.com/v1';
 
-    private ?string $accountCreationIdempotencyKey = null;
-
     public function issueOnboardingLink(Kindergarten $kindergarten, string $returnUrl, string $refreshUrl): array
     {
-        $stripeAccountId = $kindergarten->stripe_account_id;
-
-        if ($stripeAccountId === null) {
-            $stripeAccountId = $this->createConnectedAccount();
-
-            $kindergarten->forceFill([
-                'stripe_account_id' => $stripeAccountId,
-            ])->save();
-        }
+        $stripeAccountId = $this->resolveOrCreateStripeAccountId($kindergarten);
 
         $accountLink = $this->post('/account_links', [
             'account' => $stripeAccountId,
@@ -35,13 +27,18 @@ final class StripeConnectService
         ]);
 
         $expiresAt = data_get($accountLink, 'expires_at');
+        $onboardingUrl = data_get($accountLink, 'url');
+
+        if (! is_string($onboardingUrl) || trim($onboardingUrl) === '') {
+            throw new RuntimeException('Stripe account link response missing url');
+        }
 
         if (! is_numeric($expiresAt)) {
             throw new RuntimeException('Stripe account link response missing expires_at');
         }
 
         return [
-            'onboarding_url' => (string) data_get($accountLink, 'url', ''),
+            'onboarding_url' => $onboardingUrl,
             'stripe_account_id' => $stripeAccountId,
             'expires_at' => Carbon::createFromTimestampUTC((int) $expiresAt)->toIso8601String(),
         ];
@@ -128,18 +125,97 @@ final class StripeConnectService
             return;
         }
 
+        $chargesEnabled = (bool) data_get($account, 'charges_enabled', false);
+
+        if ($chargesEnabled) {
+            if ($kindergarten->stripe_onboarding_completed_at === null) {
+                $kindergarten->forceFill([
+                    'stripe_onboarding_completed_at' => now(),
+                ])->save();
+            }
+
+            return;
+        }
+
         $kindergarten->forceFill([
-            'stripe_onboarding_completed_at' => (bool) data_get($account, 'charges_enabled', false) ? now() : null,
+            'stripe_onboarding_completed_at' => null,
         ])->save();
     }
 
-    private function createConnectedAccount(): string
+    private function resolveOrCreateStripeAccountId(Kindergarten $kindergarten): string
     {
-        $idempotencyKey = $this->accountCreationIdempotencyKey ??= Str::uuid()->toString();
+        $this->ensureAccountCreationKeyIsPersisted($kindergarten->id);
 
+        return DB::transaction(function () use ($kindergarten): string {
+            $lockedKindergarten = Kindergarten::query()
+                ->whereKey($kindergarten->id)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $lockedKindergarten instanceof Kindergarten) {
+                throw new RuntimeException('Kindergarten not found');
+            }
+
+            $existingStripeAccountId = $lockedKindergarten->stripe_account_id;
+
+            if (is_string($existingStripeAccountId) && trim($existingStripeAccountId) !== '') {
+                return $existingStripeAccountId;
+            }
+
+            $idempotencyKey = $lockedKindergarten->stripe_account_creation_idempotency_key;
+
+            if (! is_string($idempotencyKey) || trim($idempotencyKey) === '') {
+                throw new RuntimeException('Stripe account creation key is not configured');
+            }
+
+            $createdStripeAccountId = $this->createConnectedAccount($idempotencyKey);
+
+            $lockedKindergarten->refresh();
+
+            if (is_string($lockedKindergarten->stripe_account_id) && trim($lockedKindergarten->stripe_account_id) !== '') {
+                return $lockedKindergarten->stripe_account_id;
+            }
+
+            $lockedKindergarten->forceFill([
+                'stripe_account_id' => $createdStripeAccountId,
+            ])->save();
+
+            return $createdStripeAccountId;
+        });
+    }
+
+    private function ensureAccountCreationKeyIsPersisted(string $kindergartenId): void
+    {
+        DB::transaction(function () use ($kindergartenId): void {
+            $lockedKindergarten = Kindergarten::query()
+                ->whereKey($kindergartenId)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $lockedKindergarten instanceof Kindergarten) {
+                throw new RuntimeException('Kindergarten not found');
+            }
+
+            if (is_string($lockedKindergarten->stripe_account_id) && trim($lockedKindergarten->stripe_account_id) !== '') {
+                return;
+            }
+
+            if (is_string($lockedKindergarten->stripe_account_creation_idempotency_key)
+                && trim($lockedKindergarten->stripe_account_creation_idempotency_key) !== '') {
+                return;
+            }
+
+            $lockedKindergarten->forceFill([
+                'stripe_account_creation_idempotency_key' => Str::uuid()->toString(),
+            ])->save();
+        });
+    }
+
+    private function createConnectedAccount(string $idempotencyKey): string
+    {
         $account = $this->post('/accounts', [
             'country' => 'JP',
-            'type' => 'express',
+            'type' => 'standard',
             'capabilities[card_payments][requested]' => 'true',
             'capabilities[transfers][requested]' => 'true',
         ], $idempotencyKey);
@@ -161,7 +237,22 @@ final class StripeConnectService
             ->get($this->stripeUrl($path));
 
         if ($response->failed()) {
-            throw new RuntimeException('Stripe API request failed');
+            $responseBody = $response->json() ?? [];
+            $errorCode = data_get($responseBody, 'error.code');
+            $errorCodeText = is_string($errorCode) && trim($errorCode) !== '' ? $errorCode : 'unknown';
+
+            Log::error('Stripe API request failed', [
+                'path' => $path,
+                'status' => $response->status(),
+                'error_code' => $errorCodeText,
+            ]);
+
+            throw new RuntimeException(sprintf(
+                'Stripe API request failed for path [%s] with status [%d] and error code [%s]',
+                $path,
+                $response->status(),
+                $errorCodeText,
+            ));
         }
 
         return $response->json() ?? [];
@@ -183,7 +274,22 @@ final class StripeConnectService
         $response = $request->post($this->stripeUrl($path), $payload);
 
         if ($response->failed()) {
-            throw new RuntimeException('Stripe API request failed');
+            $responseBody = $response->json() ?? [];
+            $errorCode = data_get($responseBody, 'error.code');
+            $errorCodeText = is_string($errorCode) && trim($errorCode) !== '' ? $errorCode : 'unknown';
+
+            Log::error('Stripe API request failed', [
+                'path' => $path,
+                'status' => $response->status(),
+                'error_code' => $errorCodeText,
+            ]);
+
+            throw new RuntimeException(sprintf(
+                'Stripe API request failed for path [%s] with status [%d] and error code [%s]',
+                $path,
+                $response->status(),
+                $errorCodeText,
+            ));
         }
 
         return $response->json() ?? [];
@@ -210,7 +316,7 @@ final class StripeConnectService
 
         $signatureParts = explode(',', $signatureHeader);
         $timestamp = null;
-        $v1Signature = null;
+        $v1Signatures = [];
 
         foreach ($signatureParts as $part) {
             $pair = explode('=', $part, 2);
@@ -221,24 +327,39 @@ final class StripeConnectService
 
             [$key, $value] = $pair;
 
-            if ($key === 't') {
+            if ($key === 't' && trim($value) !== '') {
                 $timestamp = $value;
             }
 
-            if ($key === 'v1') {
-                $v1Signature = $value;
+            if ($key === 'v1' && trim($value) !== '') {
+                $v1Signatures[] = $value;
             }
         }
 
-        if (! is_string($timestamp) || trim($timestamp) === '' || ! is_string($v1Signature) || trim($v1Signature) === '') {
+        if (! is_string($timestamp) || trim($timestamp) === '' || ! is_numeric($timestamp)) {
             throw new RuntimeException('Stripe webhook signature is invalid');
         }
 
-        $expectedSignature = hash_hmac('sha256', $timestamp.'.'.$payload, $secret);
+        $timestampValue = (int) $timestamp;
+        $now = time();
 
-        if (! hash_equals($expectedSignature, $v1Signature)) {
+        if (abs($timestampValue - $now) > 300) {
             throw new RuntimeException('Stripe webhook signature is invalid');
         }
+
+        if ($v1Signatures === []) {
+            throw new RuntimeException('Stripe webhook signature is invalid');
+        }
+
+        foreach ($v1Signatures as $v1Signature) {
+            $expectedSignature = hash_hmac('sha256', $timestamp.'.'.$payload, $secret);
+
+            if (hash_equals($expectedSignature, $v1Signature)) {
+                return;
+            }
+        }
+
+        throw new RuntimeException('Stripe webhook signature is invalid');
     }
 
     private function stripeUrl(string $path): string

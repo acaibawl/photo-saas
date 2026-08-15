@@ -129,6 +129,8 @@ class StaffStripeConnectTest extends TestCase
 
         $this->kindergartenA->refresh();
         self::assertSame('acct_123456789', $this->kindergartenA->stripe_account_id);
+        self::assertIsString($this->kindergartenA->stripe_account_creation_idempotency_key);
+        self::assertNotSame('', trim((string) $this->kindergartenA->stripe_account_creation_idempotency_key));
 
         $statusResponse = $this->withHeaders($this->authHeaders($this->ownerA))
             ->getJson('/staff/stripe/connect/status');
@@ -145,7 +147,7 @@ class StaffStripeConnectTest extends TestCase
             return $request->method() === 'POST'
                 && $request->url() === 'https://api.stripe.com/v1/accounts'
                 && $request['country'] === 'JP'
-                && $request['type'] === 'express'
+                && $request['type'] === 'standard'
                 && is_string($request->hasHeader('Idempotency-Key') ? $request->header('Idempotency-Key')[0] ?? null : null)
                 && $request->hasHeader('Idempotency-Key');
         });
@@ -168,6 +170,35 @@ class StaffStripeConnectTest extends TestCase
             ->assertJsonPath('sales_enabled', false)
             ->assertJsonPath('reason_code', 'STRIPE_ONBOARDING_INCOMPLETE')
             ->assertJsonPath('reason_message', 'Stripe onboarding is not completed');
+    }
+
+    public function test_webhook_accepts_any_valid_signature_when_multiple_v1_values_are_present(): void
+    {
+        config()->set('services.stripe.webhook_secret', 'whsec_test_123');
+
+        $this->kindergartenA->forceFill([
+            'stripe_account_id' => 'acct_987654321',
+        ])->save();
+
+        $payload = json_encode([
+            'type' => 'account.updated',
+            'data' => [
+                'object' => [
+                    'id' => 'acct_987654321',
+                    'charges_enabled' => true,
+                ],
+            ],
+        ], JSON_THROW_ON_ERROR);
+
+        $timestamp = (string) time();
+        $validSignature = hash_hmac('sha256', $timestamp.'.'.$payload, 'whsec_test_123');
+        $invalidSignature = hash_hmac('sha256', $timestamp.'.'.'not-the-same-payload', 'whsec_test_123');
+
+        app(StripeConnectService::class)
+            ->handleAccountUpdatedWebhook($payload, 't='.$timestamp.',v1='.$validSignature.',v1='.$invalidSignature);
+
+        $this->kindergartenA->refresh();
+        self::assertNotNull($this->kindergartenA->stripe_onboarding_completed_at);
     }
 
     public function test_webhook_rejects_invalid_signature(): void
@@ -195,16 +226,17 @@ class StaffStripeConnectTest extends TestCase
             ->handleAccountUpdatedWebhook($payload, 't=1234567890,v1=invalid');
     }
 
-    public function test_sales_availability_is_disabled_when_charges_are_disabled(): void
+    public function test_webhook_ignores_unrelated_event_types(): void
     {
         config()->set('services.stripe.webhook_secret', 'whsec_test_123');
 
         $this->kindergartenA->forceFill([
             'stripe_account_id' => 'acct_987654321',
+            'stripe_onboarding_completed_at' => null,
         ])->save();
 
         $payload = json_encode([
-            'type' => 'account.updated',
+            'type' => 'charge.succeeded',
             'data' => [
                 'object' => [
                     'id' => 'acct_987654321',
@@ -217,9 +249,90 @@ class StaffStripeConnectTest extends TestCase
             ->handleAccountUpdatedWebhook($payload, $this->signedStripeSignature($payload, 'whsec_test_123'));
 
         $this->kindergartenA->refresh();
-        self::assertNotNull($this->kindergartenA->stripe_onboarding_completed_at);
+        self::assertNull($this->kindergartenA->stripe_onboarding_completed_at);
+    }
+
+    public function test_webhook_ignores_unknown_account_id(): void
+    {
+        config()->set('services.stripe.webhook_secret', 'whsec_test_123');
+
+        $this->kindergartenA->forceFill([
+            'stripe_account_id' => 'acct_987654321',
+            'stripe_onboarding_completed_at' => null,
+        ])->save();
 
         $payload = json_encode([
+            'type' => 'account.updated',
+            'data' => [
+                'object' => [
+                    'id' => 'acct_unknown_123',
+                    'charges_enabled' => true,
+                ],
+            ],
+        ], JSON_THROW_ON_ERROR);
+
+        app(StripeConnectService::class)
+            ->handleAccountUpdatedWebhook($payload, $this->signedStripeSignature($payload, 'whsec_test_123'));
+
+        $this->kindergartenA->refresh();
+        self::assertNull($this->kindergartenA->stripe_onboarding_completed_at);
+    }
+
+    public function test_webhook_rejects_old_signature_timestamp(): void
+    {
+        config()->set('services.stripe.webhook_secret', 'whsec_test_123');
+
+        $this->kindergartenA->forceFill([
+            'stripe_account_id' => 'acct_987654321',
+            'stripe_onboarding_completed_at' => null,
+        ])->save();
+
+        $payload = json_encode([
+            'type' => 'account.updated',
+            'data' => [
+                'object' => [
+                    'id' => 'acct_987654321',
+                    'charges_enabled' => true,
+                ],
+            ],
+        ], JSON_THROW_ON_ERROR);
+
+        $expiredTimestamp = (string) (time() - 301);
+        $expiredSignature = hash_hmac('sha256', $expiredTimestamp.'.'.$payload, 'whsec_test_123');
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Stripe webhook signature is invalid');
+
+        app(StripeConnectService::class)
+            ->handleAccountUpdatedWebhook($payload, 't='.$expiredTimestamp.',v1='.$expiredSignature);
+    }
+
+    public function test_webhook_resets_onboarding_completion_when_charges_are_disabled(): void
+    {
+        config()->set('services.stripe.webhook_secret', 'whsec_test_123');
+
+        $this->kindergartenA->forceFill([
+            'stripe_account_id' => 'acct_987654321',
+            'stripe_onboarding_completed_at' => null,
+        ])->save();
+
+        $enabledPayload = json_encode([
+            'type' => 'account.updated',
+            'data' => [
+                'object' => [
+                    'id' => 'acct_987654321',
+                    'charges_enabled' => true,
+                ],
+            ],
+        ], JSON_THROW_ON_ERROR);
+
+        app(StripeConnectService::class)
+            ->handleAccountUpdatedWebhook($enabledPayload, $this->signedStripeSignature($enabledPayload, 'whsec_test_123'));
+
+        $this->kindergartenA->refresh();
+        self::assertNotNull($this->kindergartenA->stripe_onboarding_completed_at);
+
+        $disabledPayload = json_encode([
             'type' => 'account.updated',
             'data' => [
                 'object' => [
@@ -230,7 +343,20 @@ class StaffStripeConnectTest extends TestCase
         ], JSON_THROW_ON_ERROR);
 
         app(StripeConnectService::class)
-            ->handleAccountUpdatedWebhook($payload, $this->signedStripeSignature($payload, 'whsec_test_123'));
+            ->handleAccountUpdatedWebhook($disabledPayload, $this->signedStripeSignature($disabledPayload, 'whsec_test_123'));
+
+        $this->kindergartenA->refresh();
+        self::assertNull($this->kindergartenA->stripe_onboarding_completed_at);
+    }
+
+    public function test_sales_availability_is_disabled_when_charges_are_disabled(): void
+    {
+        config()->set('services.stripe.webhook_secret', 'whsec_test_123');
+
+        $this->kindergartenA->forceFill([
+            'stripe_account_id' => 'acct_987654321',
+            'stripe_onboarding_completed_at' => now(),
+        ])->save();
 
         Http::fake([
             'https://api.stripe.com/v1/accounts/acct_987654321*' => Http::response([
@@ -252,26 +378,39 @@ class StaffStripeConnectTest extends TestCase
             ->assertJsonPath('reason_message', 'Stripe charges are not enabled');
     }
 
-    public function test_sales_availability_is_enabled_when_onboarding_and_charges_are_ready(): void
+    public function test_sales_availability_is_incomplete_when_charges_are_enabled_but_onboarding_is_not_completed(): void
     {
-        config()->set('services.stripe.webhook_secret', 'whsec_test_123');
-
         $this->kindergartenA->forceFill([
             'stripe_account_id' => 'acct_987654321',
+            'stripe_onboarding_completed_at' => null,
         ])->save();
 
-        $payload = json_encode([
-            'type' => 'account.updated',
-            'data' => [
-                'object' => [
-                    'id' => 'acct_987654321',
-                    'charges_enabled' => true,
+        Http::fake([
+            'https://api.stripe.com/v1/accounts/acct_987654321*' => Http::response([
+                'id' => 'acct_987654321',
+                'charges_enabled' => true,
+                'payouts_enabled' => true,
+                'requirements' => [
+                    'currently_due' => [],
                 ],
-            ],
-        ], JSON_THROW_ON_ERROR);
+            ], 200),
+        ]);
 
-        app(StripeConnectService::class)
-            ->handleAccountUpdatedWebhook($payload, $this->signedStripeSignature($payload, 'whsec_test_123'));
+        $response = $this->withHeaders($this->authHeaders($this->ownerA))
+            ->getJson('/staff/sales/availability');
+
+        $response->assertOk()
+            ->assertJsonPath('sales_enabled', false)
+            ->assertJsonPath('reason_code', 'STRIPE_ONBOARDING_INCOMPLETE')
+            ->assertJsonPath('reason_message', 'Stripe onboarding is not completed');
+    }
+
+    public function test_sales_availability_is_enabled_when_onboarding_and_charges_are_ready(): void
+    {
+        $this->kindergartenA->forceFill([
+            'stripe_account_id' => 'acct_987654321',
+            'stripe_onboarding_completed_at' => now(),
+        ])->save();
 
         Http::fake([
             'https://api.stripe.com/v1/accounts/acct_987654321*' => Http::response([
@@ -311,6 +450,87 @@ class StaffStripeConnectTest extends TestCase
 
         $response->assertStatus(502)
             ->assertJsonPath('code', 'STRIPE_API_ERROR');
+    }
+
+    public function test_onboarding_link_returns_502_when_account_links_response_has_missing_expires_at(): void
+    {
+        Http::fake([
+            'https://api.stripe.com/v1/accounts' => Http::response([
+                'id' => 'acct_123456789',
+            ], 200),
+            'https://api.stripe.com/v1/account_links' => Http::response([
+                'url' => 'https://connect.stripe.com/setup/s/acct_123456789',
+            ], 200),
+        ]);
+
+        $response = $this->withHeaders($this->authHeaders($this->ownerA))
+            ->postJson('/staff/stripe/connect/onboarding-link', [
+                'return_url' => 'https://example.com/return',
+                'refresh_url' => 'https://example.com/refresh',
+            ]);
+
+        $response->assertStatus(502)
+            ->assertJsonPath('code', 'STRIPE_API_ERROR');
+    }
+
+    public function test_onboarding_link_returns_502_when_stripe_response_has_invalid_url(): void
+    {
+        Http::fake([
+            'https://api.stripe.com/v1/accounts' => Http::response([
+                'id' => 'acct_123456789',
+            ], 200),
+            'https://api.stripe.com/v1/account_links' => Http::response([
+                'url' => '',
+                'expires_at' => 1_735_689_600,
+            ], 200),
+        ]);
+
+        $response = $this->withHeaders($this->authHeaders($this->ownerA))
+            ->postJson('/staff/stripe/connect/onboarding-link', [
+                'return_url' => 'https://example.com/return',
+                'refresh_url' => 'https://example.com/refresh',
+            ]);
+
+        $response->assertStatus(502)
+            ->assertJsonPath('code', 'STRIPE_API_ERROR');
+    }
+
+    public function test_onboarding_link_reuses_persisted_kindergarten_idempotency_key(): void
+    {
+        $this->kindergartenA->forceFill([
+            'stripe_account_id' => null,
+            'stripe_account_creation_idempotency_key' => 'idem-kindergarten-a-fixed-key',
+        ])->save();
+
+        Http::fake([
+            'https://api.stripe.com/v1/accounts' => Http::response([
+                'id' => 'acct_reused_123',
+            ], 200),
+            'https://api.stripe.com/v1/account_links' => Http::response([
+                'url' => 'https://connect.stripe.com/setup/s/acct_reused_123',
+                'expires_at' => 1_735_689_600,
+            ], 200),
+        ]);
+
+        $response = $this->withHeaders($this->authHeaders($this->ownerA))
+            ->postJson('/staff/stripe/connect/onboarding-link', [
+                'return_url' => 'https://example.com/return',
+                'refresh_url' => 'https://example.com/refresh',
+            ]);
+
+        $response->assertOk()
+            ->assertJsonPath('stripe_account_id', 'acct_reused_123')
+            ->assertJsonPath('onboarding_url', 'https://connect.stripe.com/setup/s/acct_reused_123');
+
+        Http::assertSent(function (HttpRequest $request): bool {
+            return $request->method() === 'POST'
+                && $request->url() === 'https://api.stripe.com/v1/accounts'
+                && ($request->header('Idempotency-Key')[0] ?? null) === 'idem-kindergarten-a-fixed-key';
+        });
+
+        $this->kindergartenA->refresh();
+        self::assertSame('acct_reused_123', $this->kindergartenA->stripe_account_id);
+        self::assertSame('idem-kindergarten-a-fixed-key', $this->kindergartenA->stripe_account_creation_idempotency_key);
     }
 
     private function createStaff(Kindergarten $kindergarten, string $email, StaffRole $role): KindergartenStaff

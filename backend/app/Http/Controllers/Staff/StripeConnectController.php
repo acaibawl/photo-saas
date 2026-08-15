@@ -10,6 +10,7 @@ use App\Models\Kindergarten;
 use App\Models\KindergartenStaff;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
 class StripeConnectController extends Controller
@@ -30,7 +31,12 @@ class StripeConnectController extends Controller
                 $request->string('return_url')->toString(),
                 $request->string('refresh_url')->toString(),
             ));
-        } catch (RuntimeException) {
+        } catch (RuntimeException $exception) {
+            Log::error('Stripe API error for kindergarten', [
+                'kindergarten_id' => $kindergarten->id,
+                'message' => $exception->getMessage(),
+            ]);
+
             return $this->stripeApiErrorResponse();
         }
     }
@@ -47,7 +53,12 @@ class StripeConnectController extends Controller
 
         try {
             return response()->json($service->getStatus($kindergarten));
-        } catch (RuntimeException) {
+        } catch (RuntimeException $exception) {
+            Log::error('Stripe API error for kindergarten', [
+                'kindergarten_id' => $kindergarten->id,
+                'message' => $exception->getMessage(),
+            ]);
+
             return $this->stripeApiErrorResponse();
         }
     }
@@ -64,7 +75,12 @@ class StripeConnectController extends Controller
 
         try {
             return response()->json($service->getSalesAvailability($kindergarten));
-        } catch (RuntimeException) {
+        } catch (RuntimeException $exception) {
+            Log::error('Stripe API error for kindergarten', [
+                'kindergarten_id' => $kindergarten->id,
+                'message' => $exception->getMessage(),
+            ]);
+
             return $this->stripeApiErrorResponse();
         }
     }
