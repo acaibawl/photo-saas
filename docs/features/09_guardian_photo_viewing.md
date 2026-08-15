@@ -14,6 +14,9 @@
 | 写真詳細取得 | GET | `/guardian/photos/{photo_id}` |
 | プレビューURL再発行 | POST | `/guardian/photos/{photo_id}/preview-url` |
 
+本ドキュメントの一覧APIは「現在可視な写真（有効な紐づけに基づく）」を対象とする。
+購入済み写真の一覧（解除後アクセス継続を含む）は、`10_guardian_purchase_download.md` の `GET /guardian/purchased-photos` を利用する。
+
 ## 1) 紐づくアルバム一覧取得
 
 **Method / Path**: `GET /guardian/albums`  
@@ -74,6 +77,7 @@
 
 - クエリ時点で `guardian_child.unlinked_at IS NULL` と `photo_child_tags` をJOINし、可視写真のみ返す。
 - 画面側では前段の `/guardian/albums` で取得した `album_id` を使って絞り込みを行う。
+- 購入済み写真を再表示する導線には本APIを使わず、entitlement基準の `GET /guardian/purchased-photos` を使う。
 
 ## 3) 写真詳細取得
 

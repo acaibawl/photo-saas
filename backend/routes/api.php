@@ -3,6 +3,7 @@
 use App\Http\Controllers\Guardian\AuthController as GuardianAuthController;
 use App\Http\Controllers\Guardian\GuardianLinkController as GuardianGuardianLinkController;
 use App\Http\Controllers\Guardian\PhotoController as GuardianPhotoController;
+use App\Http\Controllers\Guardian\PurchaseController as GuardianPurchaseController;
 use App\Http\Controllers\PublicApi\ChildInvitationPublicController;
 use App\Http\Controllers\PublicApi\StaffInvitationPublicController;
 use App\Http\Controllers\Staff\AlbumController;
@@ -101,6 +102,10 @@ Route::prefix('/guardian')->middleware('auth:guardian')->group(function (): void
     Route::get('/photos', [GuardianPhotoController::class, 'index']);
     Route::get('/photos/{photoId}', [GuardianPhotoController::class, 'show']);
     Route::post('/photos/{photoId}/preview-url', [GuardianPhotoController::class, 'refreshPreviewUrl']);
+    Route::post('/photos/{photoId}/download-url', [GuardianPhotoController::class, 'downloadUrl']);
+    Route::post('/purchases/checkout-session', [GuardianPurchaseController::class, 'checkoutSession']);
+    Route::get('/orders', [GuardianPurchaseController::class, 'orders']);
+    Route::get('/purchased-photos', [GuardianPurchaseController::class, 'purchasedPhotos']);
     Route::post('/invitations/{rawToken}/accept', [GuardianGuardianLinkController::class, 'acceptInvitation']);
     Route::get('/children', [GuardianGuardianLinkController::class, 'index']);
 });

@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Guardian;
 
 use App\Application\Guardian\Photo\GuardianPhotoService;
+use App\Application\Guardian\Purchase\GuardianPurchaseService;
+use App\Domain\Guardian\Exceptions\EntitlementNotFoundException;
 use App\Domain\Photo\Exceptions\PhotoAccessDeniedException;
 use App\Domain\Photo\Exceptions\PhotoNotFoundException;
 use App\Http\Controllers\Controller;
@@ -134,6 +136,27 @@ class PhotoController extends Controller
                 'message' => 'Photo access denied',
                 'code' => 'PHOTO_ACCESS_DENIED',
             ], 403);
+        }
+    }
+
+    public function downloadUrl(Request $request, string $photoId, GuardianPurchaseService $service): JsonResponse
+    {
+        $guardian = $request->user('guardian');
+
+        if (! $guardian instanceof Guardian) {
+            return response()->json([
+                'message' => 'Unauthenticated',
+                'code' => 'GUARDIAN_AUTH_REQUIRED',
+            ], 401);
+        }
+
+        try {
+            return response()->json($service->downloadUrl($guardian, $photoId));
+        } catch (EntitlementNotFoundException) {
+            return response()->json([
+                'message' => 'Entitlement not found',
+                'code' => 'ENTITLEMENT_NOT_FOUND',
+            ], 404);
         }
     }
 }

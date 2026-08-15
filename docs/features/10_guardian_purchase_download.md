@@ -12,6 +12,7 @@
 |---|---|---|
 | 購入セッション作成 | POST | `/guardian/purchases/checkout-session` |
 | 注文一覧 | GET | `/guardian/orders` |
+| 購入済み写真一覧 | GET | `/guardian/purchased-photos` |
 | ダウンロードURL発行 | POST | `/guardian/photos/{photo_id}/download-url` |
 
 ## 1) 購入セッション作成
@@ -44,6 +45,9 @@
 - サーバー側で `photo_ids` から最新の販売価格合計を再計算し、`checkout_amount` と一致する場合のみ購入セッションを作成する。
 - 価格変更などにより再計算結果と `checkout_amount` が不一致の場合は `409` を返し、フロントに再取得を促す。
 - 園の販売可否（Stripe onboarding完了）をサーバーで再判定。
+- `orders.platform_fee_amount` は `backend/config/purchase.php` の設定値から算出する。
+- 算出式は `round(total_amount * platform_fee_rate)` を基準とし、`platform_fee_min_amount` と `platform_fee_max_amount` で下限・上限を適用する。
+- デフォルト値は `platform_fee_rate=0.15`、`platform_fee_min_amount=300`、`platform_fee_max_amount=3000`。
 
 ## 2) 注文一覧
 
@@ -90,6 +94,40 @@
 
 - 判定は `entitlements (guardian_id, photo_id)` の存在で行う。
 - `guardian_child` が解除済みでも entitlement があればダウンロード許可。
+
+## 4) 購入済み写真一覧
+
+**Method / Path**: `GET /guardian/purchased-photos`  
+**Auth**: `auth:guardian`
+
+### Input
+
+| フィールド | 場所 | 型 | 必須 | バリデーション |
+|---|---|---|---|---|
+| album_id | query | string(ULID) | 任意 | 自分のentitlementで到達可能な写真のアルバムのみ |
+| event_date_from | query | string(date) | 任意 | `YYYY-MM-DD` |
+| event_date_to | query | string(date) | 任意 | `YYYY-MM-DD`, from以上 |
+| page | query | integer | 任意 | min:1 |
+| per_page | query | integer | 任意 | min:1, max:100 |
+
+### Output（200）
+
+| フィールド | 型 |
+|---|---|
+| data[].photo_id | string(ULID) |
+| data[].album_id | string(ULID) |
+| data[].downloadable | boolean |
+| data[].purchased_at | string(datetime) |
+| data[].event_date | string(date) |
+| data[].preview_url | string(url) |
+| meta.current_page | integer |
+| meta.total | integer |
+
+### 認可/制約
+
+- 判定は `entitlements (guardian_id, photo_id)` を正とし、`guardian_child` の有効/解除状態に依存しない。
+- `downloadable` はentitlementが有効な写真で常に `true` とする（返却対象をentitlement保有写真に限定するため）。
+- `preview_url` は一覧表示用途の短期URLとし、原本ダウンロードは `POST /guardian/photos/{photo_id}/download-url` で都度発行する。
 
 ## 共通エラー
 
