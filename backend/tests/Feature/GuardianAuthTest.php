@@ -602,7 +602,7 @@ class GuardianAuthTest extends TestCase
         ])->postJson('/guardian/invitations/'.$unauthToken->plainText().'/accept');
 
         $unauthResponse->assertStatus(401)
-            ->assertJsonPath('code', 'STAFF_AUTH_REQUIRED');
+            ->assertJsonPath('code', 'GUARDIAN_AUTH_REQUIRED');
 
         $unauthInvitation->refresh();
         $this->assertNull($unauthInvitation->used_at);
