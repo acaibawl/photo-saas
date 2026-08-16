@@ -1,4 +1,3 @@
-import { $fetch } from 'ofetch'
 import type { FetchError } from 'ofetch'
 
 type AuthRealm = 'staff' | 'guardian'
@@ -56,9 +55,11 @@ export default defineNuxtPlugin(() => {
     const endpoint = realm === 'staff' ? '/staff/auth/refresh' : '/guardian/auth/refresh'
 
     try {
+      // refresh_token は backend ドメインの httpOnly Cookie のため、frontend 経由ではなく backend へ直接 include で叩く
       const response = await $fetch<{ access_token: string }>(endpoint, {
+        baseURL: config.public.apiBaseUrl,
         method: 'POST',
-        credentials: 'same-origin',
+        credentials: 'include',
       })
 
       if (!response.access_token) {
@@ -120,16 +121,17 @@ export default defineNuxtPlugin(() => {
 
   const api = async <T>(path: string, options: ApiFetchOptions = {}): Promise<T> => {
     const headers = applyAuthHeader(path, options.headers)
-    const isRefreshRequest = isRefreshPath(path)
+    // login/refresh は backend が Set-Cookie する refresh_token を保存/送信するため credentials が必要
+    const needsCookieCredentials = isRefreshPath(path) || isLoginPath(path)
 
     try {
       return await $fetch<T>(path, {
-        baseURL: isRefreshRequest ? undefined : config.public.apiBaseUrl,
+        baseURL: config.public.apiBaseUrl,
         method: options.method,
         body: options.body,
         query: options.query,
         headers,
-        credentials: isRefreshRequest ? 'same-origin' : 'omit',
+        credentials: needsCookieCredentials ? 'include' : 'omit',
       })
     } catch (error) {
       const fetchError = error as FetchError
@@ -159,7 +161,7 @@ export default defineNuxtPlugin(() => {
         body: options.body,
         query: options.query,
         headers: retryHeaders,
-        credentials: 'omit',
+        credentials: needsCookieCredentials ? 'include' : 'omit',
       })
     }
   }
