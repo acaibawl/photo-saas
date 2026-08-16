@@ -2,7 +2,8 @@
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
   devtools: { enabled: true },
-  modules: ['@nuxt/eslint', '@vee-validate/nuxt', '@pinia/nuxt'],
+  modules: ['@nuxt/eslint', '@nuxt/ui', '@vee-validate/nuxt', '@pinia/nuxt'],
+  css: ['~/assets/css/main.css'],
   runtimeConfig: {
     public: {
       // Overridden by NUXT_PUBLIC_API_BASE_URL from .env at runtime.
@@ -11,7 +12,7 @@ export default defineNuxtConfig({
   },
   vite: {
     server: {
-      allowedHosts: ['frontend.local']
-    }
-  }
+      allowedHosts: ['frontend.local'],
+    },
+  },
 })
