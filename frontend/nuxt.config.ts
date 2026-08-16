@@ -13,14 +13,6 @@ export default defineNuxtConfig({
       apiBaseUrl,
     },
   },
-  routeRules: {
-    '/staff/auth/refresh': {
-      proxy: `${apiBaseUrl}/staff/auth/refresh`,
-    },
-    '/guardian/auth/refresh': {
-      proxy: `${apiBaseUrl}/guardian/auth/refresh`,
-    },
-  },
   vite: {
     server: {
       allowedHosts: ['frontend.local'],
