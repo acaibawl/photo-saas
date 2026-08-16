@@ -27,6 +27,7 @@ const isLoggingOut = ref(false)
 const errorMessage = ref('')
 const salesAvailability = ref<SalesAvailability | null>(null)
 const stripeStatus = ref<StripeConnectStatus | null>(null)
+const salesPermissionDenied = ref(false)
 
 const isOwner = computed(() => authStore.staffUser?.role === 'owner')
 
@@ -38,6 +39,7 @@ async function handleUnauthorized(): Promise<void> {
 async function loadDashboard(): Promise<void> {
   isLoading.value = true
   errorMessage.value = ''
+  salesPermissionDenied.value = false
 
   try {
     await fetchMe()
@@ -62,7 +64,24 @@ async function loadDashboard(): Promise<void> {
         return
       }
 
-      if (normalized.code !== 'STAFF_ROLE_FORBIDDEN') {
+      if (normalized.code === 'STAFF_ROLE_FORBIDDEN') {
+        salesPermissionDenied.value = true
+        salesAvailability.value = null
+        stripeStatus.value = null
+
+        try {
+          await fetchMe()
+        } catch (refreshError) {
+          const refreshed = normalizeError(refreshError)
+
+          if (refreshed.status === 401) {
+            await handleUnauthorized()
+            return
+          }
+
+          errorMessage.value = refreshed.message
+        }
+      } else {
         errorMessage.value = normalized.message
       }
     }
@@ -86,11 +105,11 @@ async function handleLogout(): Promise<void> {
 
   try {
     await logout()
+    await navigateTo('/staff/login')
   } catch (error) {
     errorMessage.value = normalizeError(error).message
   } finally {
     isLoggingOut.value = false
-    await navigateTo('/staff/login')
   }
 }
 
@@ -136,7 +155,9 @@ onMounted(loadDashboard)
           </NuxtLink>
         </section>
 
-        <section v-if="isOwner" class="grid gap-4 lg:grid-cols-2" aria-label="販売状況">
+        <UAlert v-if="salesPermissionDenied" color="error" variant="soft" title="写真販売の表示権限がありません。" />
+
+        <section v-else-if="isOwner" class="grid gap-4 lg:grid-cols-2" aria-label="販売状況">
           <UCard class="border border-slate-200 shadow-sm">
             <template #header>
               <div class="flex items-center justify-between gap-4">
@@ -155,10 +176,10 @@ onMounted(loadDashboard)
             <template #header>
               <div class="flex items-center justify-between gap-4">
                 <div><p class="text-sm font-medium text-slate-600">Stripe Connect</p><h2 class="mt-1 text-lg font-semibold text-slate-900">オンボーディング状況</h2></div>
-                <UBadge :color="stripeStatus?.charges_enabled ? 'success' : 'neutral'" variant="subtle">{{ stripeStatus?.charges_enabled ? '有効' : '未完了' }}</UBadge>
+                <UBadge :color="stripeStatus?.charges_enabled && stripeStatus?.payouts_enabled ? 'success' : 'neutral'" variant="subtle">{{ stripeStatus?.charges_enabled && stripeStatus?.payouts_enabled ? '有効' : '未完了' }}</UBadge>
               </div>
             </template>
-            <p class="text-sm text-slate-700">{{ stripeStatus?.charges_enabled ? 'カード決済と入金が有効です。' : '本人確認・口座情報の設定が必要です。' }}</p>
+            <p class="text-sm text-slate-700">{{ stripeStatus?.charges_enabled && stripeStatus?.payouts_enabled ? 'カード決済と入金が有効です。' : '本人確認・口座情報の設定が必要です。' }}</p>
             <p v-if="stripeStatus?.requirements_due.length" class="mt-3 text-sm text-amber-800">追加対応が必要な項目があります。</p>
           </UCard>
         </section>

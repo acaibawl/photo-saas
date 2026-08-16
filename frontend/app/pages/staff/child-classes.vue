@@ -23,8 +23,19 @@ type ChildClassListResponse = {
 const { $api } = useNuxtApp()
 const { normalizeError } = useApiError()
 const { logout } = useStaffAuth()
+const route = useRoute()
+const router = useRouter()
+
+function parsePageFromQuery(value: unknown): number {
+  const raw = Array.isArray(value) ? value[0] : value
+  const parsed = Number(raw)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 1
+}
 
 const childClasses = ref<ChildClass[]>([])
+const currentPage = ref(parsePageFromQuery(route.query.page))
+const perPage = ref(20)
+const totalCount = ref(0)
 const isLoading = ref(true)
 const isSaving = ref(false)
 const isDeleting = ref(false)
@@ -37,6 +48,7 @@ const deletingClass = ref<ChildClass | null>(null)
 const editName = ref('')
 
 const hasClasses = computed(() => childClasses.value.length > 0)
+const hasPagination = computed(() => totalCount.value > perPage.value)
 
 async function handleUnauthorized(): Promise<void> {
   await logout().catch(() => undefined)
@@ -74,15 +86,18 @@ function applyFormError(error: unknown, fallback: string): void {
   }
 }
 
-async function loadChildClasses(): Promise<void> {
+async function loadChildClasses(page = currentPage.value): Promise<void> {
   isLoading.value = true
   pageError.value = ''
 
   try {
     const response = await $api<ChildClassListResponse>('/staff/child-classes', {
-      query: { page: 1, per_page: 100 },
+      query: { page, per_page: perPage.value },
     })
     childClasses.value = response.data
+    currentPage.value = response.meta.current_page
+    perPage.value = response.meta.per_page
+    totalCount.value = response.meta.total
   } catch (error) {
     const normalized = normalizeError(error)
 
@@ -96,6 +111,27 @@ async function loadChildClasses(): Promise<void> {
     isLoading.value = false
   }
 }
+
+async function goToPage(page: number): Promise<void> {
+  if (page === currentPage.value) {
+    await loadChildClasses(page)
+    return
+  }
+
+  await router.push({ query: { ...route.query, page: page > 1 ? String(page) : undefined } })
+}
+
+watch(() => route.query.page, () => {
+  const page = parsePageFromQuery(route.query.page)
+  const rawPage = Array.isArray(route.query.page) ? route.query.page[0] : route.query.page
+
+  if (rawPage !== undefined && rawPage !== String(page)) {
+    void router.replace({ query: { ...route.query, page: page > 1 ? String(page) : undefined } })
+    return
+  }
+
+  void loadChildClasses(page)
+})
 
 async function createChildClass(): Promise<void> {
   formError.value = ''
@@ -112,7 +148,7 @@ async function createChildClass(): Promise<void> {
       body: { name: createName.value.trim() },
     })
     createName.value = ''
-    await loadChildClasses()
+    await goToPage(1)
   } catch (error) {
     if (normalizeError(error).status === 401) {
       await handleUnauthorized()
@@ -138,6 +174,34 @@ function closeEditModal(): void {
   formError.value = ''
   nameError.value = ''
 }
+
+function openDeleteModal(childClass: ChildClass): void {
+  deletingClass.value = childClass
+  formError.value = ''
+}
+
+function closeDeleteModal(): void {
+  deletingClass.value = null
+  formError.value = ''
+}
+
+const isEditModalOpen = computed({
+  get: () => editingClass.value !== null,
+  set: (value: boolean) => {
+    if (!value) {
+      closeEditModal()
+    }
+  },
+})
+
+const isDeleteModalOpen = computed({
+  get: () => deletingClass.value !== null,
+  set: (value: boolean) => {
+    if (!value) {
+      closeDeleteModal()
+    }
+  },
+})
 
 async function updateChildClass(): Promise<void> {
   if (!editingClass.value || !validateName(editName.value)) {
@@ -179,7 +243,8 @@ async function deleteChildClass(): Promise<void> {
       method: 'DELETE',
     })
     deletingClass.value = null
-    await loadChildClasses()
+    const isLastItemOnPage = childClasses.value.length === 1 && currentPage.value > 1
+    await goToPage(isLastItemOnPage ? currentPage.value - 1 : currentPage.value)
   } catch (error) {
     if (normalizeError(error).status === 401) {
       await handleUnauthorized()
@@ -227,13 +292,13 @@ onMounted(loadChildClasses)
       </UCard>
 
       <UAlert v-if="pageError" color="error" variant="soft" :title="pageError">
-        <template #actions><UButton color="error" variant="ghost" size="sm" @click="loadChildClasses">再読み込み</UButton></template>
+        <template #actions><UButton color="error" variant="ghost" size="sm" @click="goToPage(currentPage)">再読み込み</UButton></template>
       </UAlert>
 
       <section class="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
         <div class="flex items-center justify-between border-b border-slate-200 px-5 py-4">
           <h2 class="text-lg font-semibold text-slate-900">登録済みの組</h2>
-          <span v-if="!isLoading" class="text-sm text-slate-500">{{ childClasses.length }}件</span>
+          <span v-if="!isLoading" class="text-sm text-slate-500">{{ totalCount }}件</span>
         </div>
 
         <div v-if="isLoading" class="space-y-3 p-5" aria-label="読み込み中">
@@ -254,38 +319,63 @@ onMounted(loadChildClasses)
             </div>
             <div class="flex shrink-0 items-center gap-1">
               <UButton color="neutral" variant="ghost" icon="i-lucide-pencil" :aria-label="`${childClass.name}を編集`" @click="openEditModal(childClass)" />
-              <UButton color="error" variant="ghost" icon="i-lucide-trash-2" :aria-label="`${childClass.name}を削除`" @click="deletingClass = childClass" />
+              <UButton color="error" variant="ghost" icon="i-lucide-trash-2" :aria-label="`${childClass.name}を削除`" @click="openDeleteModal(childClass)" />
             </div>
           </article>
+        </div>
+
+        <div v-if="!isLoading && hasPagination" class="flex justify-center border-t border-slate-200 px-5 py-4">
+          <UPagination
+            :page="currentPage"
+            :items-per-page="perPage"
+            :total="totalCount"
+            @update:page="(page) => goToPage(page)"
+          />
         </div>
       </section>
     </div>
 
-    <div v-if="editingClass" class="fixed inset-0 z-50 grid place-items-center bg-slate-950/35 p-4" role="presentation" @click.self="closeEditModal">
-      <section class="w-full max-w-md rounded-lg bg-white p-6 shadow-xl" role="dialog" aria-modal="true" aria-labelledby="edit-class-title">
-        <div class="flex items-start justify-between gap-4">
-          <div><h2 id="edit-class-title" class="text-xl font-semibold text-slate-900">組名を編集</h2><p class="mt-1 text-sm text-slate-600">園児の所属はそのまま維持されます。</p></div>
-          <UButton color="neutral" variant="ghost" icon="i-lucide-x" aria-label="編集を閉じる" @click="closeEditModal" />
-        </div>
-        <form class="mt-6 space-y-4" @submit.prevent="updateChildClass">
+    <UModal
+      v-model:open="isEditModalOpen"
+      title="組名を編集"
+      description="園児の所属はそのまま維持されます。"
+      :dismissible="!isSaving"
+      :close="{ disabled: isSaving }"
+    >
+      <template #body>
+        <form id="edit-class-form" class="space-y-4" @submit.prevent="updateChildClass">
           <div>
             <label for="edit-class-name" class="mb-2 block text-sm font-medium text-slate-800">組名</label>
             <UInput id="edit-class-name" v-model="editName" maxlength="50" :disabled="isSaving" autofocus />
             <p v-if="nameError" class="mt-1 text-sm text-red-700">{{ nameError }}</p>
           </div>
           <UAlert v-if="formError" color="error" variant="soft" :title="formError" />
-          <div class="flex justify-end gap-3"><UButton color="neutral" variant="outline" :disabled="isSaving" @click="closeEditModal">キャンセル</UButton><UButton type="submit" :loading="isSaving">保存</UButton></div>
         </form>
-      </section>
-    </div>
+      </template>
+      <template #footer>
+        <div class="flex w-full justify-end gap-3">
+          <UButton color="neutral" variant="outline" :disabled="isSaving" @click="closeEditModal">キャンセル</UButton>
+          <UButton type="submit" form="edit-class-form" :loading="isSaving">保存</UButton>
+        </div>
+      </template>
+    </UModal>
 
-    <div v-if="deletingClass" class="fixed inset-0 z-50 grid place-items-center bg-slate-950/35 p-4" role="presentation" @click.self="deletingClass = null">
-      <section class="w-full max-w-md rounded-lg bg-white p-6 shadow-xl" role="dialog" aria-modal="true" aria-labelledby="delete-class-title">
-        <h2 id="delete-class-title" class="text-xl font-semibold text-slate-900">組を削除しますか？</h2>
-        <p class="mt-3 text-sm leading-6 text-slate-700">「{{ deletingClass.name }}」を削除します。所属する園児がいる組は削除できません。</p>
+    <UModal
+      v-model:open="isDeleteModalOpen"
+      title="組を削除しますか？"
+      :dismissible="!isDeleting"
+      :close="{ disabled: isDeleting }"
+    >
+      <template #body>
+        <p class="text-sm leading-6 text-slate-700">「{{ deletingClass?.name }}」を削除します。所属する園児がいる組は削除できません。</p>
         <UAlert v-if="formError" class="mt-4" color="error" variant="soft" :title="formError" />
-        <div class="mt-6 flex justify-end gap-3"><UButton color="neutral" variant="outline" :disabled="isDeleting" @click="deletingClass = null">キャンセル</UButton><UButton color="error" icon="i-lucide-trash-2" :loading="isDeleting" @click="deleteChildClass">削除する</UButton></div>
-      </section>
-    </div>
+      </template>
+      <template #footer>
+        <div class="flex w-full justify-end gap-3">
+          <UButton color="neutral" variant="outline" :disabled="isDeleting" @click="closeDeleteModal">キャンセル</UButton>
+          <UButton color="error" icon="i-lucide-trash-2" :loading="isDeleting" @click="deleteChildClass">削除する</UButton>
+        </div>
+      </template>
+    </UModal>
   </main>
 </template>
