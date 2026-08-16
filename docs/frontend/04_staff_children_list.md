@@ -29,7 +29,7 @@
 
 - 入力: `name`, `child_class_id`, `status`
 - `GET /staff/child-classes` で取得した組一覧から選択した `child_class_id` を送信する
-- `class_name` は表示用の派生値であり、リクエストの正本ではない
+- `child_class_id` は選択した組のIDを送信する正本であり、`class_name` は表示用の派生値
 - 送信: `POST /staff/children`
 - 成功後: モーダルを閉じて一覧再取得
 

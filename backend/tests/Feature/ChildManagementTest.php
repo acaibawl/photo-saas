@@ -98,7 +98,7 @@ class ChildManagementTest extends TestCase
         $createResponse = $this->withHeaders($this->authHeaders($this->staffA))
             ->postJson('/staff/children', [
                 'name' => '新規園児',
-                'class_name' => 'ぱんだ組',
+                'child_class_id' => $this->getOrCreateChildClassIdFor($this->kindergartenA->id, 'ぱんだ組'),
             ]);
 
         $createdClassId = $this->getChildClassIdFor($this->kindergartenA->id, 'ぱんだ組');
@@ -124,7 +124,7 @@ class ChildManagementTest extends TestCase
         $createResponse = $this->withHeaders($this->authHeaders($this->staffA))
             ->postJson('/staff/children', [
                 'name' => '新規園児',
-                'class_name' => 'ぱんだ組',
+                'child_class_id' => $this->getOrCreateChildClassIdFor($this->kindergartenA->id, 'ぱんだ組'),
             ]);
 
         $createResponse->assertCreated()
@@ -156,7 +156,7 @@ class ChildManagementTest extends TestCase
         $updateResponse = $this->withHeaders($this->authHeaders($this->staffA))
             ->patchJson('/staff/children/'.$this->childA->id, [
                 'name' => '山田花子 改',
-                'class_name' => 'きりん組',
+                'child_class_id' => $this->getOrCreateChildClassIdFor($this->kindergartenA->id, 'きりん組'),
             ]);
 
         $updateResponse->assertOk()
@@ -169,7 +169,7 @@ class ChildManagementTest extends TestCase
     public function test_list_children_applies_filters(): void
     {
         $response = $this->withHeaders($this->authHeaders($this->staffA))
-            ->getJson('/staff/children?status=graduated&class_name=ひよこ組&keyword=太郎');
+            ->getJson('/staff/children?status=graduated&child_class_id='.$this->getOrCreateChildClassIdFor($this->kindergartenA->id, 'ひよこ組').'&keyword=太郎');
 
         $response->assertOk()
             ->assertJsonPath('meta.total', 1)
@@ -211,6 +211,25 @@ class ChildManagementTest extends TestCase
 
     public function test_cross_tenant_and_missing_child_are_handled_distinctly(): void
     {
+        $crossTenantClassId = $this->getOrCreateChildClassIdFor($this->kindergartenB->id, '他園組');
+
+        $createResponse = $this->withHeaders($this->authHeaders($this->staffA))
+            ->postJson('/staff/children', [
+                'name' => '越境園児',
+                'child_class_id' => $crossTenantClassId,
+            ]);
+
+        $createResponse->assertStatus(403)
+            ->assertJsonPath('code', 'TENANT_SCOPE_VIOLATION');
+
+        $updateResponse = $this->withHeaders($this->authHeaders($this->staffA))
+            ->patchJson('/staff/children/'.$this->childA->id, [
+                'child_class_id' => $crossTenantClassId,
+            ]);
+
+        $updateResponse->assertStatus(403)
+            ->assertJsonPath('code', 'TENANT_SCOPE_VIOLATION');
+
         $crossTenantResponse = $this->withHeaders($this->authHeaders($this->staffA))
             ->getJson('/staff/children/'.$this->otherKindergartenChild->id);
 

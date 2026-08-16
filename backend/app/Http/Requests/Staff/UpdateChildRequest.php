@@ -14,8 +14,8 @@ class UpdateChildRequest extends ApiFormRequest
     public function rules(): array
     {
         return [
-            'name' => ['sometimes', 'filled', 'string', 'max:100', 'required_without_all:class_name'],
-            'class_name' => ['sometimes', 'filled', 'string', 'max:50', 'required_without_all:name'],
+            'name' => ['sometimes', 'filled', 'string', 'max:100', 'required_without_all:child_class_id'],
+            'child_class_id' => ['sometimes', 'filled', 'string', 'ulid', 'required_without_all:name'],
         ];
     }
 }

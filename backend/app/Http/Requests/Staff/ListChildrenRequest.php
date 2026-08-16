@@ -15,7 +15,7 @@ class ListChildrenRequest extends ApiFormRequest
     {
         return [
             'status' => ['nullable', 'string', 'in:enrolled,graduated,withdrawn'],
-            'class_name' => ['nullable', 'string', 'max:50'],
+            'child_class_id' => ['nullable', 'string', 'ulid'],
             'keyword' => ['nullable', 'string', 'max:100'],
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],

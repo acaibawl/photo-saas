@@ -51,7 +51,7 @@
 | フィールド | 場所 | 型 | 必須 | バリデーション |
 |---|---|---|---|---|
 | status | query | string | 任意 | `enrolled` / `graduated` / `withdrawn` |
-| class_name | query | string | 任意 | max:50 |
+| child_class_id | query | string(ULID) | 任意 | 自園の child class であること |
 | keyword | query | string | 任意 | max:100 |
 | page | query | integer | 任意 | min:1 |
 | per_page | query | integer | 任意 | min:1, max:100 |
