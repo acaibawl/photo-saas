@@ -30,6 +30,7 @@
     "yup-locale-ja": "^1.0.0"
   },
   "devDependencies": {
+    "@types/node": "^26.2.0",
     "vue-tsc": "^3.3.10"
   }
 }

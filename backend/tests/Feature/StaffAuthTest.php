@@ -55,10 +55,11 @@ class StaffAuthTest extends TestCase
             ])
             ->assertJsonPath('staff.email', 'staff@example.com');
 
-        $setCookieHeader = $response->headers->get('set-cookie');
-        $this->assertIsString($setCookieHeader);
-        $this->assertStringContainsString('SameSite=None', $setCookieHeader);
-        $this->assertStringContainsString('Secure', $setCookieHeader);
+        $refreshCookie = $response->getCookie('refresh_token', false);
+        $this->assertNotNull($refreshCookie);
+        $this->assertSame('none', $refreshCookie->getSameSite());
+        $this->assertTrue($refreshCookie->isSecure());
+        $this->assertTrue($refreshCookie->isHttpOnly());
 
         $this->assertDatabaseHas('staff_refresh_tokens', [
             'kindergarten_staff_id' => $this->staff->id,
