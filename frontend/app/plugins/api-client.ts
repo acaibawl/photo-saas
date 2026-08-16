@@ -57,9 +57,8 @@ export default defineNuxtPlugin(() => {
 
     try {
       const response = await $fetch<{ access_token: string }>(endpoint, {
-        baseURL: config.public.apiBaseUrl,
         method: 'POST',
-        credentials: 'include',
+        credentials: 'same-origin',
       })
 
       if (!response.access_token) {
@@ -120,15 +119,16 @@ export default defineNuxtPlugin(() => {
 
   const api = async <T>(path: string, options: ApiFetchOptions = {}): Promise<T> => {
     const headers = applyAuthHeader(path, options.headers)
+    const isRefreshRequest = isRefreshPath(path)
 
     try {
       return await $fetch<T>(path, {
-        baseURL: config.public.apiBaseUrl,
+        baseURL: isRefreshRequest ? undefined : config.public.apiBaseUrl,
         method: options.method,
         body: options.body,
         query: options.query,
         headers,
-        credentials: 'include',
+        credentials: isRefreshRequest ? 'same-origin' : 'omit',
       })
     } catch (error) {
       const fetchError = error as FetchError
@@ -158,7 +158,7 @@ export default defineNuxtPlugin(() => {
         body: options.body,
         query: options.query,
         headers: retryHeaders,
-        credentials: 'include',
+        credentials: 'omit',
       })
     }
   }

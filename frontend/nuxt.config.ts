@@ -1,4 +1,7 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
+const apiBaseUrl = process.env.NUXT_PUBLIC_API_BASE_URL || 'https://backend.local'
+
+// https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
   devtools: { enabled: true },
@@ -7,7 +10,15 @@ export default defineNuxtConfig({
   runtimeConfig: {
     public: {
       // Overridden by NUXT_PUBLIC_API_BASE_URL from .env at runtime.
-      apiBaseUrl: 'https://backend.local',
+      apiBaseUrl,
+    },
+  },
+  routeRules: {
+    '/staff/auth/refresh': {
+      proxy: `${apiBaseUrl}/staff/auth/refresh`,
+    },
+    '/guardian/auth/refresh': {
+      proxy: `${apiBaseUrl}/guardian/auth/refresh`,
     },
   },
   vite: {
