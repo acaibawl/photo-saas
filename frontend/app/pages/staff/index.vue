@@ -4,17 +4,27 @@ definePageMeta({
 })
 
 const authStore = useAuthStore()
-const { logout } = useStaffAuth()
+const { fetchMe, logout } = useStaffAuth()
+const { normalizeError } = useApiError()
 
 const pending = ref(false)
+const errorMessage = ref('')
+const {
+  error: profileError,
+  refresh: retryFetchMe,
+} = useAsyncData('staff-profile', fetchMe, { server: false })
 
 async function handleLogout(): Promise<void> {
   pending.value = true
+  errorMessage.value = ''
+
   try {
     await logout()
-    await navigateTo('/staff/login')
+  } catch (error) {
+    errorMessage.value = normalizeError(error).message
   } finally {
     pending.value = false
+    await navigateTo('/staff/login')
   }
 }
 </script>
@@ -25,6 +35,14 @@ async function handleLogout(): Promise<void> {
       <h1>スタッフ管理トップ</h1>
       <p>ログイン済みです。フェーズ1でダッシュボードを拡張します。</p>
       <p v-if="authStore.staffUser">{{ authStore.staffUser.name }} ({{ authStore.staffUser.role }})</p>
+      <UAlert
+        v-if="profileError"
+        color="error"
+        variant="soft"
+        title="スタッフ情報を取得できませんでした。"
+      />
+      <button v-if="profileError" type="button" @click="() => retryFetchMe()">スタッフ情報を再取得</button>
+      <UAlert v-if="errorMessage" color="error" variant="soft" :title="errorMessage" />
       <button type="button" :disabled="pending" @click="handleLogout">
         {{ pending ? 'ログアウト中...' : 'ログアウト' }}
       </button>

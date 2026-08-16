@@ -55,6 +55,11 @@ class StaffAuthTest extends TestCase
             ])
             ->assertJsonPath('staff.email', 'staff@example.com');
 
+        $setCookieHeader = $response->headers->get('set-cookie');
+        $this->assertIsString($setCookieHeader);
+        $this->assertStringContainsString('SameSite=None', $setCookieHeader);
+        $this->assertStringContainsString('Secure', $setCookieHeader);
+
         $this->assertDatabaseHas('staff_refresh_tokens', [
             'kindergarten_staff_id' => $this->staff->id,
         ]);
@@ -162,6 +167,30 @@ class StaffAuthTest extends TestCase
         $response->assertStatus(422)
             ->assertJsonPath('code', 'VALIDATION_ERROR')
             ->assertJsonPath('errors.refresh_token.0', 'validation.required');
+    }
+
+    public function test_refresh_rejects_untrusted_origin_when_cross_site_cookie_is_used(): void
+    {
+        $refreshToken = SecureToken::generate();
+
+        StaffRefreshToken::create([
+            'kindergarten_staff_id' => $this->staff->id,
+            'token_hash' => $refreshToken->hash(),
+            'family_id' => 'family-origin-check',
+            'family_expires_at' => now()->addDays(14),
+            'expires_at' => now()->addDays(14),
+            'ip_address' => '127.0.0.1',
+            'user_agent' => 'phpunit',
+        ]);
+
+        $response = $this->withHeaders([
+            'Accept' => 'application/json',
+            'Origin' => 'https://evil.example',
+            'Cookie' => 'refresh_token='.rawurlencode($refreshToken->plainText()),
+        ])->postJson('/staff/auth/refresh');
+
+        $response->assertForbidden()
+            ->assertJsonPath('code', 'INVALID_ORIGIN');
     }
 
     public function test_deactivated_staff_cannot_refresh_access_token(): void

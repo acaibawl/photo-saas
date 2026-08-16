@@ -1,4 +1,5 @@
-import { $fetch, FetchError } from 'ofetch'
+import { $fetch } from 'ofetch'
+import type { FetchError } from 'ofetch'
 
 type AuthRealm = 'staff' | 'guardian'
 
@@ -82,7 +83,14 @@ export default defineNuxtPlugin(() => {
       }
 
       return true
-    } catch {
+    } catch (error) {
+      const fetchError = error as FetchError
+      const status = fetchError.response?.status
+
+      if (status !== 401 && status !== 403) {
+        throw error
+      }
+
       if (realm === 'staff') {
         authStore.clearStaffSession()
         authStore.markStaffSessionRestored()
@@ -102,7 +110,7 @@ export default defineNuxtPlugin(() => {
     }
 
     const running = performRefresh(realm).finally(() => {
-      delete refreshPromises[realm]
+      refreshPromises[realm] = undefined
     })
 
     refreshPromises[realm] = running

@@ -11,6 +11,11 @@ type InvitationPreview = {
   expires_at: string
 }
 
+type InvitationPreviewResult = {
+  invitation: InvitationPreview | null
+  errorMessage: string
+}
+
 type AcceptResponse = {
   access_token: string
   token_type: string
@@ -29,10 +34,7 @@ useHead({
 const route = useRoute()
 const authStore = useAuthStore()
 const { $api } = useNuxtApp()
-const { fetchMe } = useStaffAuth()
 const { normalizeError } = useApiError()
-
-const previewErrorMessage = ref('')
 
 const submitErrorMessage = ref('')
 
@@ -72,39 +74,46 @@ const [passwordConfirmation, passwordConfirmationAttrs] = defineField('password_
 const showPassword = ref(false)
 const showPasswordConfirmation = ref(false)
 
-const { data: invitation, pending: loadingPreview } = await useAsyncData<InvitationPreview | null>(
+const { data: invitationPreview, pending: loadingPreview } = await useAsyncData<InvitationPreviewResult>(
   () => `staff-invitation-preview-${token.value}`,
   async () => {
-    previewErrorMessage.value = ''
-
     if (token.value === '') {
-      previewErrorMessage.value = '招待トークンが見つかりません。'
-      return null
+      return {
+        invitation: null,
+        errorMessage: '招待トークンが見つかりません。',
+      }
     }
 
     try {
-      return await $api<InvitationPreview>(`/public/staff-invitations/${token.value}`, {
+      const invitation = await $api<InvitationPreview>(`/public/staff-invitations/${token.value}`, {
         method: 'GET',
         skipAuthRetry: true,
       })
+
+      return { invitation, errorMessage: '' }
     } catch (error) {
       const normalized = normalizeError(error)
+      let errorMessage: string
+
       if (normalized.code === 'STAFF_INVITATION_INVALID_OR_EXPIRED') {
-        previewErrorMessage.value = 'この招待は無効または期限切れです。園に再発行を依頼してください。'
+        errorMessage = 'この招待は無効または期限切れです。園に再発行を依頼してください。'
       } else if (normalized.status === 429) {
-        previewErrorMessage.value = '試行回数が多すぎます。時間をおいて再試行してください。'
+        errorMessage = '試行回数が多すぎます。時間をおいて再試行してください。'
       } else {
-        previewErrorMessage.value = normalized.message
+        errorMessage = normalized.message
       }
 
-      return null
+      return { invitation: null, errorMessage }
     }
   },
   {
     watch: [token],
-    default: () => null,
+    default: (): InvitationPreviewResult => ({ invitation: null, errorMessage: '' }),
   },
 )
+
+const invitation = computed(() => invitationPreview.value.invitation)
+const previewErrorMessage = computed(() => invitationPreview.value.errorMessage)
 
 const canSubmit = computed(() => {
   return token.value !== '' && invitation.value !== null && !loadingPreview.value && !isSubmitting.value
@@ -130,7 +139,6 @@ const submit = handleSubmit(async (values) => {
     authStore.setStaffAccessToken(response.access_token)
     authStore.markStaffSessionRestored()
 
-    await fetchMe()
     await navigateTo('/staff', { replace: true })
   } catch (error) {
     const normalized = normalizeError(error)
@@ -190,7 +198,7 @@ const submit = handleSubmit(async (values) => {
             </div>
             <div class="grid gap-1">
               <span class="text-xs text-slate-500">有効期限</span>
-              <strong class="text-sm text-slate-900">{{ new Date(invitation.expires_at).toLocaleString('ja-JP') }}</strong>
+              <strong class="text-sm text-slate-900">{{ new Date(invitation.expires_at).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' }) }}</strong>
             </div>
           </div>
 
@@ -211,9 +219,9 @@ const submit = handleSubmit(async (values) => {
         <form class="space-y-5" @submit="submit">
           <UFormField label="新しいパスワード" :error="errors.password" hint="8〜72文字で設定してください。">
             <UInput
+              id="staff-invitation-password"
               v-model="password"
               v-bind="passwordAttrs"
-              id="staff-invitation-password"
               :type="showPassword ? 'text' : 'password'"
               size="lg"
               autocomplete="new-password"
@@ -239,9 +247,9 @@ const submit = handleSubmit(async (values) => {
 
           <UFormField label="パスワード確認" :error="errors.password_confirmation">
             <UInput
+              id="staff-invitation-password-confirmation"
               v-model="passwordConfirmation"
               v-bind="passwordConfirmationAttrs"
-              id="staff-invitation-password-confirmation"
               :type="showPasswordConfirmation ? 'text' : 'password'"
               size="lg"
               autocomplete="new-password"

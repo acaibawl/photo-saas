@@ -6,7 +6,7 @@ definePageMeta({
   middleware: ['guardian-guest'],
 })
 
-const { login, fetchChildren } = useGuardianAuth()
+const { login } = useGuardianAuth()
 const { normalizeError } = useApiError()
 
 const validationSchema = yup.object({
@@ -50,7 +50,6 @@ const submit = handleSubmit(async (values) => {
 
   try {
     await login(values.email.trim(), values.password)
-    await fetchChildren()
     await navigateTo('/guardian')
   } catch (error) {
     const normalized = normalizeError(error)
@@ -96,9 +95,9 @@ const submit = handleSubmit(async (values) => {
 
         <UFormField label="パスワード" :error="errors.password">
           <UInput
+            id="guardian-login-password"
             v-model="password"
             v-bind="passwordAttrs"
-            id="guardian-login-password"
             :type="showPassword ? 'text' : 'password'"
             size="lg"
             placeholder="8文字以上"

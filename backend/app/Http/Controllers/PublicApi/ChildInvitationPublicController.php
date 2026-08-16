@@ -43,7 +43,7 @@ class ChildInvitationPublicController extends Controller
             unset($result['refresh_token']);
 
             return response()->json($result)
-                ->withCookie(cookie('refresh_token', $refreshToken, 60 * 24 * 14, '/guardian/auth/refresh', null, true, true, false, 'strict'));
+                ->withCookie(cookie('refresh_token', $refreshToken, 60 * 24 * 14, '/guardian/auth/refresh', null, true, true, false, 'none'));
         } catch (GuardianInvitationAlreadyUsedException) {
             return response()->json([
                 'message' => 'Invitation already used',

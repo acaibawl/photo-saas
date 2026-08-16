@@ -31,7 +31,7 @@ class AuthController extends Controller
             unset($result['refresh_token']);
 
             return response()->json($result)
-                ->withCookie(cookie('refresh_token', $refreshToken, 60 * 24 * 14, '/guardian/auth/refresh', null, true, true, false, 'strict'));
+                ->withCookie(cookie('refresh_token', $refreshToken, 60 * 24 * 14, '/guardian/auth/refresh', null, true, true, false, 'none'));
         } catch (InvalidGuardianCredentialsException) {
             return response()->json([
                 'message' => 'Invalid guardian credentials',
@@ -47,6 +47,12 @@ class AuthController extends Controller
 
     public function refresh(RefreshGuardianRequest $request, GuardianAuthService $service): JsonResponse
     {
+        $originCheck = $this->validateRefreshRequestOrigin($request);
+
+        if ($originCheck !== null) {
+            return $originCheck;
+        }
+
         $refreshToken = $this->resolveRefreshToken($request);
 
         if ($refreshToken === null || trim($refreshToken) === '') {
@@ -70,7 +76,7 @@ class AuthController extends Controller
             unset($result['refresh_token']);
 
             return response()->json($result)
-                ->withCookie(cookie('refresh_token', $refreshToken, 60 * 24 * 14, '/guardian/auth/refresh', null, true, true, false, 'strict'));
+                ->withCookie(cookie('refresh_token', $refreshToken, 60 * 24 * 14, '/guardian/auth/refresh', null, true, true, false, 'none'));
         } catch (InvalidGuardianRefreshTokenException) {
             return response()->json([
                 'message' => 'Invalid refresh token',
@@ -174,6 +180,31 @@ class AuthController extends Controller
         $loginUrl = $base.'/guardian/login?return_to='.rawurlencode($safeReturnTo);
 
         return redirect()->away($loginUrl);
+    }
+
+    private function validateRefreshRequestOrigin(Request $request): ?JsonResponse
+    {
+        $origin = $request->header('Origin');
+
+        if (! is_string($origin) || trim($origin) === '') {
+            return null;
+        }
+
+        $allowedOrigins = array_filter([
+            rtrim((string) config('app.frontend_url'), '/'),
+            rtrim((string) config('cors.allowed_origins.0', ''), '/'),
+        ]);
+
+        foreach ($allowedOrigins as $allowedOrigin) {
+            if (strtolower($allowedOrigin) === strtolower($origin)) {
+                return null;
+            }
+        }
+
+        return response()->json([
+            'message' => 'Forbidden',
+            'code' => 'INVALID_ORIGIN',
+        ], 403);
     }
 
     private function resolveRefreshToken(Request $request): ?string

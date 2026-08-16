@@ -1,8 +1,8 @@
-export default defineNuxtPlugin(async () => {
+export default defineNuxtPlugin(() => {
   const staffAuth = useStaffAuth()
   const guardianAuth = useGuardianAuth()
 
-  await Promise.all([
+  void Promise.all([
     staffAuth.ensureSessionRestored(),
     guardianAuth.ensureSessionRestored(),
   ])

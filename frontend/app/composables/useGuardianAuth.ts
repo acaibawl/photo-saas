@@ -49,7 +49,11 @@ export function useGuardianAuth() {
       return
     }
 
-    await refresh()
+    try {
+      await refresh()
+    } finally {
+      authStore.markGuardianSessionRestored()
+    }
   }
 
   const logout = async (): Promise<void> => {

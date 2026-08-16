@@ -51,7 +51,11 @@ export function useStaffAuth() {
       return
     }
 
-    await refresh()
+    try {
+      await refresh()
+    } finally {
+      authStore.markStaffSessionRestored()
+    }
   }
 
   const logout = async (): Promise<void> => {

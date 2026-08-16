@@ -97,9 +97,9 @@ const submit = handleSubmit(async (values) => {
 
         <UFormField label="パスワード" :error="errors.password">
           <UInput
+            id="staff-login-password"
             v-model="password"
             v-bind="passwordAttrs"
-            id="staff-login-password"
             :type="showPassword ? 'text' : 'password'"
             size="lg"
             placeholder="8文字以上"

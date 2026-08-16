@@ -3,16 +3,27 @@ definePageMeta({
   middleware: ['guardian-auth'],
 })
 
-const { logout } = useGuardianAuth()
+const { logout, fetchChildren } = useGuardianAuth()
+const { normalizeError } = useApiError()
 const pending = ref(false)
+const errorMessage = ref('')
+
+onMounted(() => {
+  // children data isn't rendered yet; failures here must not block the guardian portal
+  fetchChildren().catch(() => {})
+})
 
 async function handleLogout(): Promise<void> {
   pending.value = true
+  errorMessage.value = ''
+
   try {
     await logout()
-    await navigateTo('/guardian/login')
+  } catch (error) {
+    errorMessage.value = normalizeError(error).message
   } finally {
     pending.value = false
+    await navigateTo('/guardian/login')
   }
 }
 </script>
@@ -22,6 +33,7 @@ async function handleLogout(): Promise<void> {
     <section class="panel">
       <h1>保護者ホーム</h1>
       <p>ログイン済みです。フェーズ4以降で園児一覧を追加します。</p>
+      <UAlert v-if="errorMessage" color="error" variant="soft" :title="errorMessage" />
       <button type="button" :disabled="pending" @click="handleLogout">
         {{ pending ? 'ログアウト中...' : 'ログアウト' }}
       </button>

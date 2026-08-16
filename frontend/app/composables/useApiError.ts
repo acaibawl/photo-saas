@@ -48,11 +48,12 @@ export function useApiError() {
     const status = maybe.response?.status ?? maybe.statusCode ?? null
     const body = maybe.response?._data ?? maybe.data
     const code = body?.code ?? null
+    const hasStatusFallback = [401, 403, 422, 429].includes(status ?? 0)
 
     return {
       status,
       code,
-      message: body?.message ?? maybe.message ?? fallbackMessage(status),
+      message: body?.message ?? (hasStatusFallback ? fallbackMessage(status) : maybe.message ?? fallbackMessage(status)),
       fieldErrors: body?.errors ?? {},
     }
   }
