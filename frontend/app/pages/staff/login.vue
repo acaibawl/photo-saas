@@ -39,6 +39,7 @@ const [email, emailAttrs] = defineField('email', {
 const [password, passwordAttrs] = defineField('password', {
   validateOnModelUpdate: false,
 })
+const showPassword = ref(false)
 const errorMessage = ref('')
 
 const canSubmit = computed(() => {
@@ -98,16 +99,33 @@ const submit = handleSubmit(async (values) => {
           <UInput
             v-model="password"
             v-bind="passwordAttrs"
-            type="password"
+            id="staff-login-password"
+            :type="showPassword ? 'text' : 'password'"
             size="lg"
             placeholder="8文字以上"
             autocomplete="current-password"
-          />
+            :ui="{ trailing: 'pe-1' }"
+          >
+            <template #trailing>
+              <UButton
+                type="button"
+                color="neutral"
+                variant="link"
+                size="sm"
+                :icon="showPassword ? 'i-lucide-eye-off' : 'i-lucide-eye'"
+                :aria-label="showPassword ? 'パスワードを隠す' : 'パスワードを表示'"
+                :aria-pressed="showPassword"
+                aria-controls="staff-login-password"
+                tabindex="-1"
+                @click="showPassword = !showPassword"
+              />
+            </template>
+          </UInput>
         </UFormField>
 
         <UAlert v-if="errorMessage" color="error" variant="soft" :title="errorMessage" />
 
-        <UButton type="submit" size="lg" class="w-full enabled:cursor-pointer" :loading="isSubmitting" :disabled="!canSubmit">
+        <UButton type="submit" size="lg" class="w-full justify-center enabled:cursor-pointer" :loading="isSubmitting" :disabled="!canSubmit">
           {{ isSubmitting ? 'ログイン中...' : 'ログイン' }}
         </UButton>
       </form>

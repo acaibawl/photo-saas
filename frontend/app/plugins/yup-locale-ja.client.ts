@@ -1,6 +1,14 @@
 import { suggestive } from 'yup-locale-ja'
-import { setLocale } from 'yup'
+import { setLocale, type LocaleObject } from 'yup'
 
-setLocale(suggestive)
+const japaneseLocale = {
+	...suggestive,
+	mixed: {
+		...suggestive.mixed,
+		required: ({ label }: { label?: string }) => `${label ? `${label}は` : ''}必ず入力してください。`,
+	},
+} satisfies LocaleObject
+
+setLocale(japaneseLocale)
 
 export default defineNuxtPlugin(() => {})
