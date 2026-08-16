@@ -86,7 +86,8 @@ export default defineNuxtPlugin(() => {
       const fetchError = error as FetchError
       const status = fetchError.response?.status
 
-      if (status !== 401 && status !== 403) {
+      // 422 はリフレッシュトークン未保持(未ログイン)時に返される想定内のレスポンス
+      if (status !== 401 && status !== 403 && status !== 422) {
         throw error
       }
 
