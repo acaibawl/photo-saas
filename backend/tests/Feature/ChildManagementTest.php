@@ -166,6 +166,15 @@ class ChildManagementTest extends TestCase
             ->assertJsonPath('status', 'enrolled');
     }
 
+    public function test_staff_cannot_update_a_child_with_an_empty_payload(): void
+    {
+        $response = $this->withHeaders($this->authHeaders($this->staffA))
+            ->patchJson('/staff/children/'.$this->childA->id, []);
+
+        $response->assertStatus(422)
+            ->assertJsonPath('code', 'VALIDATION_ERROR');
+    }
+
     public function test_list_children_applies_filters(): void
     {
         $response = $this->withHeaders($this->authHeaders($this->staffA))
@@ -175,6 +184,22 @@ class ChildManagementTest extends TestCase
             ->assertJsonPath('meta.total', 1)
             ->assertJsonPath('data.0.id', $this->childB->id)
             ->assertJsonPath('data.0.status', 'graduated');
+    }
+
+    public function test_list_children_rejects_missing_and_cross_tenant_child_classes(): void
+    {
+        $missingResponse = $this->withHeaders($this->authHeaders($this->staffA))
+            ->getJson('/staff/children?child_class_id='.str()->ulid());
+
+        $missingResponse->assertStatus(404)
+            ->assertJsonPath('code', 'CHILD_CLASS_NOT_FOUND');
+
+        $crossTenantClassId = $this->getOrCreateChildClassIdFor($this->kindergartenB->id, '他園組');
+        $crossTenantResponse = $this->withHeaders($this->authHeaders($this->staffA))
+            ->getJson('/staff/children?child_class_id='.$crossTenantClassId);
+
+        $crossTenantResponse->assertStatus(403)
+            ->assertJsonPath('code', 'TENANT_SCOPE_VIOLATION');
     }
 
     public function test_staff_can_update_child_status_and_same_status_is_accepted(): void
@@ -253,6 +278,24 @@ class ChildManagementTest extends TestCase
     public function test_cross_tenant_and_missing_child_are_handled_distinctly(): void
     {
         $crossTenantClassId = $this->getOrCreateChildClassIdFor($this->kindergartenB->id, '他園組');
+        $missingClassId = str()->ulid()->toString();
+
+        $missingCreateResponse = $this->withHeaders($this->authHeaders($this->staffA))
+            ->postJson('/staff/children', [
+                'name' => '未存在クラス園児',
+                'child_class_id' => $missingClassId,
+            ]);
+
+        $missingCreateResponse->assertStatus(404)
+            ->assertJsonPath('code', 'CHILD_CLASS_NOT_FOUND');
+
+        $missingUpdateResponse = $this->withHeaders($this->authHeaders($this->staffA))
+            ->patchJson('/staff/children/'.$this->childA->id, [
+                'child_class_id' => $missingClassId,
+            ]);
+
+        $missingUpdateResponse->assertStatus(404)
+            ->assertJsonPath('code', 'CHILD_CLASS_NOT_FOUND');
 
         $createResponse = $this->withHeaders($this->authHeaders($this->staffA))
             ->postJson('/staff/children', [

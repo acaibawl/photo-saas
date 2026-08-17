@@ -53,7 +53,9 @@ final class ChildManagementService
         }
 
         if ($childClassId !== null && trim($childClassId) !== '') {
-            $query->where('child_class_id', trim($childClassId));
+            $childClassId = trim($childClassId);
+            $this->findChildClassForActor($actor, $childClassId);
+            $query->where('child_class_id', $childClassId);
         }
 
         if ($keyword !== null && trim($keyword) !== '') {

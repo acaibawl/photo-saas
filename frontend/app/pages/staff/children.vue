@@ -96,8 +96,13 @@ async function loadClasses(): Promise<void> {
     );
     classes.value = response.data;
   } catch (error) {
-    if (normalizeError(error).status === 401) await unauthorized();
+    const normalized = normalizeError(error);
+    if (normalized.status === 401) return await unauthorized();
+    pageError.value = normalized.message;
   }
+}
+async function reloadPageData(): Promise<void> {
+  await Promise.all([loadChildren(), loadClasses()]);
 }
 async function applyFilters(): Promise<void> {
   currentPage.value = 1;
@@ -108,14 +113,12 @@ async function applyFilters(): Promise<void> {
       keyword: filters.keyword || undefined,
     },
   });
-  await loadChildren();
 }
 async function goToPage(page: number): Promise<void> {
   currentPage.value = page;
   await router.push({
     query: { ...route.query, page: page > 1 ? String(page) : undefined },
   });
-  await loadChildren();
 }
 function clearForm(): void {
   form.name = "";
@@ -173,7 +176,7 @@ watch(
   { deep: true },
 );
 onMounted(() => {
-  void Promise.all([loadChildren(), loadClasses()]);
+  void reloadPageData();
 });
 </script>
 
@@ -211,7 +214,7 @@ onMounted(() => {
             color="error"
             variant="ghost"
             size="sm"
-            @click="loadChildren"
+            @click="reloadPageData"
             >再読み込み</UButton
           ></template
         ></UAlert

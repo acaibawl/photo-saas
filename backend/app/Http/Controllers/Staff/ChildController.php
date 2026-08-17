@@ -55,14 +55,26 @@ class ChildController extends Controller
             return $this->unauthenticatedResponse();
         }
 
-        $paginator = $service->listChildren(
-            $staff,
-            $request->string('status')->toString() !== '' ? $request->string('status')->toString() : null,
-            $request->string('child_class_id')->toString() !== '' ? $request->string('child_class_id')->toString() : null,
-            $request->string('keyword')->toString() !== '' ? $request->string('keyword')->toString() : null,
-            $request->integer('page', 1),
-            $request->integer('per_page', 20),
-        );
+        try {
+            $paginator = $service->listChildren(
+                $staff,
+                $request->string('status')->toString() !== '' ? $request->string('status')->toString() : null,
+                $request->string('child_class_id')->toString() !== '' ? $request->string('child_class_id')->toString() : null,
+                $request->string('keyword')->toString() !== '' ? $request->string('keyword')->toString() : null,
+                $request->integer('page', 1),
+                $request->integer('per_page', 20),
+            );
+        } catch (ChildClassNotFoundException) {
+            return response()->json([
+                'message' => 'Child class not found',
+                'code' => 'CHILD_CLASS_NOT_FOUND',
+            ], 404);
+        } catch (ChildClassTenantScopeViolationException) {
+            return response()->json([
+                'message' => 'Tenant scope violation',
+                'code' => 'TENANT_SCOPE_VIOLATION',
+            ], 403);
+        }
 
         $data = array_map(fn (Child $child): array => $this->formatChild($child, true), $paginator->items());
 

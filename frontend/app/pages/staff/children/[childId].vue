@@ -50,6 +50,21 @@ async function loadChild(): Promise<void> {
     isLoading.value = false;
   }
 }
+async function loadClasses(): Promise<void> {
+  try {
+    const response = await $api<ChildClassResponse>("/staff/child-classes", {
+      query: { page: 1, per_page: 100 },
+    });
+    classes.value = response.data;
+  } catch (error) {
+    const normalized = normalizeError(error);
+    if (normalized.status === 401) return await unauthorized();
+    pageError.value = normalized.message;
+  }
+}
+async function reloadPageData(): Promise<void> {
+  await Promise.all([loadChild(), loadClasses()]);
+}
 async function saveChild(): Promise<void> {
   if (!name.value.trim() || !childClassId.value) {
     formError.value = "氏名と組を選択してください。";
@@ -79,14 +94,7 @@ async function saveChild(): Promise<void> {
   }
 }
 onMounted(async () => {
-  await Promise.all([
-    loadChild(),
-    $api<ChildClassResponse>("/staff/child-classes", {
-      query: { page: 1, per_page: 100 },
-    }).then((response) => {
-      classes.value = response.data;
-    }),
-  ]);
+  await reloadPageData();
 });
 </script>
 <template>
@@ -117,7 +125,7 @@ onMounted(async () => {
       </header>
       <UAlert v-if="pageError" color="error" variant="soft" :title="pageError"
         ><template #actions
-          ><UButton color="error" variant="ghost" size="sm" @click="loadChild"
+          ><UButton color="error" variant="ghost" size="sm" @click="reloadPageData"
             >再読み込み</UButton
           ></template
         ></UAlert
