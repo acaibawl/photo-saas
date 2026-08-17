@@ -15,7 +15,7 @@ class CreateChildRequest extends ApiFormRequest
     {
         return [
             'name' => ['required', 'string', 'max:100'],
-            'class_name' => ['required', 'string', 'max:50'],
+            'child_class_id' => ['required', 'string', 'ulid'],
             'status' => ['sometimes', 'string', 'in:enrolled,graduated,withdrawn'],
         ];
     }

@@ -51,7 +51,7 @@
 | フィールド | 場所 | 型 | 必須 | バリデーション |
 |---|---|---|---|---|
 | status | query | string | 任意 | `enrolled` / `graduated` / `withdrawn` |
-| class_name | query | string | 任意 | max:50 |
+| child_class_id | query | string(ULID) | 任意 | 自園の child class であること |
 | keyword | query | string | 任意 | max:100 |
 | page | query | integer | 任意 | min:1 |
 | per_page | query | integer | 任意 | min:1, max:100 |
@@ -127,14 +127,13 @@
 | enrolled | withdrawn | 可 | 退園として保存する |
 | enrolled | enrolled | 可 | 同一status更新として no-op で受理する |
 | graduated | graduated | 可 | 同一status更新として no-op で受理する |
+| graduated | enrolled | 可 | 誤操作の訂正として在籍に戻す |
+| graduated | withdrawn | 可 | 誤操作の訂正として退園に変更する |
 | withdrawn | withdrawn | 可 | 同一status更新として no-op で受理する |
-| graduated | enrolled | 不可 | `409 CHILD_STATUS_TRANSITION_NOT_ALLOWED` |
-| withdrawn | enrolled | 不可 | `409 CHILD_STATUS_TRANSITION_NOT_ALLOWED` |
-| graduated | withdrawn | 不可 | `409 CHILD_STATUS_TRANSITION_NOT_ALLOWED` |
-| withdrawn | graduated | 不可 | `409 CHILD_STATUS_TRANSITION_NOT_ALLOWED` |
+| withdrawn | enrolled | 可 | 誤操作の訂正として在籍に戻す |
+| withdrawn | graduated | 可 | 誤操作の訂正として卒園に変更する |
 
-- 卒園・退園後に再度「在園中」として扱いたい場合は、この status 更新APIではなく別の新規登録/再登録手段を用いる。
-- 禁止遷移は必ず `CHILD_STATUS_TRANSITION_NOT_ALLOWED` として扱い、実装は在籍状態の保存ルールを一貫させる。
+- 在籍状態は誤操作を訂正できるよう、すべての状態間で変更を許可する。
 
 ### Output（200）
 

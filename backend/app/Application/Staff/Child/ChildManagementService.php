@@ -6,6 +6,8 @@ use App\Domain\Child\ChildStatus;
 use App\Domain\Child\Exceptions\ChildNotFoundException;
 use App\Domain\Child\Exceptions\ChildStatusTransitionNotAllowedException;
 use App\Domain\Child\Exceptions\ChildTenantScopeViolationException;
+use App\Domain\ChildClass\Exceptions\ChildClassNotFoundException;
+use App\Domain\ChildClass\Exceptions\ChildClassTenantScopeViolationException;
 use App\Models\Child;
 use App\Models\ChildClass;
 use App\Models\KindergartenStaff;
@@ -17,14 +19,10 @@ final class ChildManagementService
     public function createChild(
         KindergartenStaff $actor,
         string $name,
-        string $className,
+        string $childClassId,
         ChildStatus $status,
     ): array {
-        $childClass = ChildClass::query()
-            ->firstOrCreate([
-                'kindergarten_id' => $actor->kindergarten_id,
-                'name' => $className,
-            ]);
+        $childClass = $this->findChildClassForActor($actor, $childClassId);
 
         $child = Child::create([
             'child_class_id' => $childClass->id,
@@ -38,7 +36,7 @@ final class ChildManagementService
     public function listChildren(
         KindergartenStaff $actor,
         ?string $status,
-        ?string $className,
+        ?string $childClassId,
         ?string $keyword,
         int $page,
         int $perPage,
@@ -54,10 +52,10 @@ final class ChildManagementService
             $query->where('status', $status);
         }
 
-        if ($className !== null && trim($className) !== '') {
-            $query->whereHas('childClass', function ($builder) use ($className): void {
-                $builder->where('name', trim($className));
-            });
+        if ($childClassId !== null && trim($childClassId) !== '') {
+            $childClassId = trim($childClassId);
+            $this->findChildClassForActor($actor, $childClassId);
+            $query->where('child_class_id', $childClassId);
         }
 
         if ($keyword !== null && trim($keyword) !== '') {
@@ -96,7 +94,7 @@ final class ChildManagementService
         KindergartenStaff $actor,
         string $childId,
         ?string $name,
-        ?string $className,
+        ?string $childClassId,
     ): array {
         $child = $this->findChild($actor, $childId);
 
@@ -104,13 +102,8 @@ final class ChildManagementService
             $child->forceFill(['name' => $name]);
         }
 
-        if ($className !== null) {
-            $childClass = ChildClass::query()
-                ->firstOrCreate([
-                    'kindergarten_id' => $actor->kindergarten_id,
-                    'name' => $className,
-                ]);
-
+        if ($childClassId !== null) {
+            $childClass = $this->findChildClassForActor($actor, $childClassId);
             $child->forceFill([
                 'child_class_id' => $childClass->id,
             ]);
@@ -168,16 +161,27 @@ final class ChildManagementService
 
     private function isTransitionAllowed(ChildStatus $currentStatus, ChildStatus $newStatus): bool
     {
-        if ($currentStatus === ChildStatus::Enrolled) {
-            return in_array($newStatus, [ChildStatus::Graduated, ChildStatus::Withdrawn], true);
-        }
-
-        return false;
+        return true;
     }
 
     private function isChildInKindergarten(Child $child, string $kindergartenId): bool
     {
         return $child->childClass->kindergarten_id === $kindergartenId;
+    }
+
+    private function findChildClassForActor(KindergartenStaff $actor, string $childClassId): ChildClass
+    {
+        $childClass = ChildClass::query()->whereKey($childClassId)->first();
+
+        if ($childClass === null) {
+            throw new ChildClassNotFoundException;
+        }
+
+        if ($childClass->kindergarten_id !== $actor->kindergarten_id) {
+            throw new ChildClassTenantScopeViolationException;
+        }
+
+        return $childClass;
     }
 
     private function formatChild(Child $child, bool $includeUpdatedAt): array
