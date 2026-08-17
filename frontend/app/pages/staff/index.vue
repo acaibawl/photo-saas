@@ -125,7 +125,7 @@ onMounted(loadDashboard)
           <h1 class="text-3xl font-semibold text-slate-900">ダッシュボード</h1>
           <p v-if="authStore.staffUser" class="text-sm text-slate-600">{{ authStore.staffUser.name }}さんとしてログインしています</p>
         </div>
-        <UButton color="neutral" variant="outline" icon="i-lucide-log-out" :loading="isLoggingOut" @click="handleLogout">ログアウト</UButton>
+        <UButton color="neutral" variant="outline" icon="i-lucide-log-out" class="cursor-pointer" :loading="isLoggingOut" @click="handleLogout">ログアウト</UButton>
       </header>
 
       <UAlert v-if="errorMessage" color="error" variant="soft" :title="errorMessage">
