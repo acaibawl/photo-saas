@@ -57,9 +57,7 @@ Eloquentモデル + Policyクラス + DBトランザクションで表現でき�
 
 - 責務: 園児そのものの属性（氏名・クラス・在籍状況）の管理
 - 不変条件:
-  - `status` の遷移は `enrolled → graduated` / `enrolled → withdrawn` のみ許可し、
-    卒園・退園からの復帰は行わない（誤操作時は園側に個別対応してもらう運用とし、
-    ドメインルールとしては不可逆とする）
+  - `status` は誤操作を訂正できるよう、`enrolled`、`graduated`、`withdrawn` のすべての状態間で変更を許可する
 - 対応する08_features.md: 「1.2 園児管理」
 
 ### 3.3 ChildInvitation集約

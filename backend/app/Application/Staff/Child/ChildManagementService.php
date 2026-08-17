@@ -159,11 +159,7 @@ final class ChildManagementService
 
     private function isTransitionAllowed(ChildStatus $currentStatus, ChildStatus $newStatus): bool
     {
-        if ($currentStatus === ChildStatus::Enrolled) {
-            return in_array($newStatus, [ChildStatus::Graduated, ChildStatus::Withdrawn], true);
-        }
-
-        return false;
+        return true;
     }
 
     private function isChildInKindergarten(Child $child, string $kindergartenId): bool

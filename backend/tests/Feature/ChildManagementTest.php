@@ -198,15 +198,56 @@ class ChildManagementTest extends TestCase
             ->assertJsonPath('status', 'graduated');
     }
 
-    public function test_child_status_transition_back_to_enrolled_is_rejected(): void
+    public function test_staff_can_restore_a_graduated_child_to_enrolled(): void
     {
         $response = $this->withHeaders($this->authHeaders($this->staffA))
             ->patchJson('/staff/children/'.$this->childB->id.'/status', [
                 'status' => 'enrolled',
             ]);
 
-        $response->assertStatus(409)
-            ->assertJsonPath('code', 'CHILD_STATUS_TRANSITION_NOT_ALLOWED');
+        $response->assertOk()
+            ->assertJsonPath('id', $this->childB->id)
+            ->assertJsonPath('status', 'enrolled');
+    }
+
+    public function test_staff_can_change_a_graduated_child_to_withdrawn(): void
+    {
+        $response = $this->withHeaders($this->authHeaders($this->staffA))
+            ->patchJson('/staff/children/'.$this->childB->id.'/status', [
+                'status' => 'withdrawn',
+            ]);
+
+        $response->assertOk()
+            ->assertJsonPath('id', $this->childB->id)
+            ->assertJsonPath('status', 'withdrawn');
+    }
+
+    public function test_staff_can_restore_a_withdrawn_child_to_enrolled(): void
+    {
+        $this->childA->update(['status' => ChildStatus::Withdrawn]);
+
+        $response = $this->withHeaders($this->authHeaders($this->staffA))
+            ->patchJson('/staff/children/'.$this->childA->id.'/status', [
+                'status' => 'enrolled',
+            ]);
+
+        $response->assertOk()
+            ->assertJsonPath('id', $this->childA->id)
+            ->assertJsonPath('status', 'enrolled');
+    }
+
+    public function test_staff_can_change_a_withdrawn_child_to_graduated(): void
+    {
+        $this->childA->update(['status' => ChildStatus::Withdrawn]);
+
+        $response = $this->withHeaders($this->authHeaders($this->staffA))
+            ->patchJson('/staff/children/'.$this->childA->id.'/status', [
+                'status' => 'graduated',
+            ]);
+
+        $response->assertOk()
+            ->assertJsonPath('id', $this->childA->id)
+            ->assertJsonPath('status', 'graduated');
     }
 
     public function test_cross_tenant_and_missing_child_are_handled_distinctly(): void
