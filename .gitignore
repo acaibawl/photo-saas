@@ -2,3 +2,4 @@
 .DS_Store
 *.crt
 *.key
+.claude/*
