@@ -69,6 +69,7 @@ const tabItems = [
 const activeTab = ref('members')
 const isCheckingAccess = ref(true)
 const accessDenied = ref(false)
+const accessErrorMessage = ref('')
 
 const members = ref<StaffMember[]>([])
 const memberFilters = reactive({ status: '', role: '', keyword: '' })
@@ -149,6 +150,7 @@ async function checkAccess(): Promise<boolean> {
     }
 
     accessDenied.value = true
+    accessErrorMessage.value = normalized.message
     return false
   }
 }
@@ -226,6 +228,7 @@ async function loadInvitations(): Promise<void> {
 async function initialize(): Promise<void> {
   isCheckingAccess.value = true
   accessDenied.value = false
+  accessErrorMessage.value = ''
 
   const canAccess = await checkAccess()
   isCheckingAccess.value = false
@@ -465,7 +468,13 @@ onMounted(initialize)
         <div v-for="index in 4" :key="index" class="h-12 animate-pulse rounded bg-slate-100" />
       </section>
 
-      <UAlert v-else-if="accessDenied" color="error" variant="soft" title="スタッフ管理情報を読み込めませんでした。">
+      <UAlert
+        v-else-if="accessDenied"
+        color="error"
+        variant="soft"
+        title="スタッフ管理情報を読み込めませんでした。"
+        :description="accessErrorMessage || 'スタッフ管理情報を読み込めませんでした。'"
+      >
         <template #actions>
           <UButton color="error" variant="ghost" size="sm" @click="initialize">再読み込み</UButton>
         </template>
