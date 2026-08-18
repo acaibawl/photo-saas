@@ -148,7 +148,12 @@ async function createChild(): Promise<void> {
     });
     isModalOpen.value = false;
     clearForm();
-    await goToPage(1);
+    currentPage.value = 1;
+    if (route.query.page) {
+      await router.push({ query: { ...route.query, page: undefined } });
+    } else {
+      await loadChildren();
+    }
   } catch (error) {
     const normalized = normalizeError(error);
     if (normalized.status === 401) return await unauthorized();
@@ -246,7 +251,7 @@ onMounted(() => {
               v-model="filters.keyword"
               placeholder="園児名・組名"
               icon="i-lucide-search" /></UFormField
-          ><UButton type="submit" color="primary" icon="i-lucide-filter"
+          ><UButton type="submit" color="primary" icon="i-lucide-list-filter"
             >絞り込む</UButton
           >
         </form></UCard
