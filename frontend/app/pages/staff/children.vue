@@ -251,7 +251,7 @@ onMounted(() => {
               v-model="filters.keyword"
               placeholder="園児名・組名"
               icon="i-lucide-search" /></UFormField
-          ><UButton type="submit" color="primary" icon="i-lucide-filter"
+          ><UButton type="submit" color="primary" icon="i-lucide-list-filter"
             >絞り込む</UButton
           >
         </form></UCard
