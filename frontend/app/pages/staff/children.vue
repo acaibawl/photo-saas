@@ -148,7 +148,12 @@ async function createChild(): Promise<void> {
     });
     isModalOpen.value = false;
     clearForm();
-    await goToPage(1);
+    currentPage.value = 1;
+    if (route.query.page) {
+      await router.push({ query: { ...route.query, page: undefined } });
+    } else {
+      await loadChildren();
+    }
   } catch (error) {
     const normalized = normalizeError(error);
     if (normalized.status === 401) return await unauthorized();
