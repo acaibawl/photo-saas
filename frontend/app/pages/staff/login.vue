@@ -125,7 +125,7 @@ const submit = handleSubmit(async (values) => {
 
         <UAlert v-if="errorMessage" color="error" variant="soft" :title="errorMessage" />
 
-        <UButton type="submit" size="lg" class="w-full justify-center enabled:cursor-pointer" :loading="isSubmitting" :disabled="!canSubmit">
+        <UButton type="submit" size="lg" class="w-full justify-center" :loading="isSubmitting" :disabled="!canSubmit">
           {{ isSubmitting ? 'ログイン中...' : 'ログイン' }}
         </UButton>
       </form>
