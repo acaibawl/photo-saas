@@ -153,6 +153,11 @@ onMounted(loadDashboard)
             <h2 class="mt-4 text-lg font-semibold text-slate-900 group-hover:text-sky-800">写真管理</h2>
             <p class="mt-1 text-sm leading-6 text-slate-600">アップロード済み写真と販売設定を確認します。</p>
           </NuxtLink>
+          <NuxtLink v-if="isOwner" to="/staff/members" class="group rounded-lg border border-slate-200 bg-white p-5 shadow-sm transition hover:border-sky-300 hover:shadow-md">
+            <UIcon name="i-lucide-user-cog" class="size-6 text-sky-700" />
+            <h2 class="mt-4 text-lg font-semibold text-slate-900 group-hover:text-sky-800">スタッフ管理</h2>
+            <p class="mt-1 text-sm leading-6 text-slate-600">スタッフの招待、ロール変更、有効/停止を管理します。</p>
+          </NuxtLink>
         </section>
 
         <UAlert v-if="salesPermissionDenied" color="error" variant="soft" title="写真販売の表示権限がありません。" />
