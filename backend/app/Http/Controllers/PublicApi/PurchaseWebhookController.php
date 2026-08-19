@@ -2,9 +2,9 @@
 
 namespace App\Http\Controllers\PublicApi;
 
-use App\Application\Shared\Exceptions\StripeWebhookValidationException;
 use App\Application\Guardian\Purchase\OrderFulfillmentService;
 use App\Application\Kindergarten\StripeConnectService;
+use App\Application\Shared\Exceptions\StripeWebhookValidationException;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;

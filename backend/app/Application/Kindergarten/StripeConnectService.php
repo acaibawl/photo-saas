@@ -3,8 +3,8 @@
 namespace App\Application\Kindergarten;
 
 use App\Application\Shared\Exceptions\StripeWebhookValidationException;
-use App\Models\StripeWebhookEvent;
 use App\Models\Kindergarten;
+use App\Models\StripeWebhookEvent;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -137,10 +137,6 @@ final class StripeConnectService
                 ->first();
 
             if ($kindergarten === null) {
-                return;
-            }
-
-            if (! $kindergarten instanceof Kindergarten) {
                 return;
             }
 
