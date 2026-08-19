@@ -11,8 +11,10 @@ use App\Models\GuardianChild;
 use App\Models\GuardianRefreshToken;
 use App\Models\Kindergarten;
 use App\Models\KindergartenStaff;
+use App\Notifications\GuardianEmailVerificationNotification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
@@ -70,6 +72,8 @@ class GuardianAuthTest extends TestCase
 
     public function test_guardian_can_preview_and_accept_public_child_invitation(): void
     {
+        Notification::fake();
+
         $token = SecureToken::generate();
 
         $invitation = ChildInvitation::create([
@@ -114,6 +118,9 @@ class GuardianAuthTest extends TestCase
 
         $invitation->refresh();
         $this->assertNotNull($invitation->used_at);
+
+        $newGuardian = Guardian::query()->where('email', 'new-guardian@example.com')->firstOrFail();
+        Notification::assertSentTo($newGuardian, GuardianEmailVerificationNotification::class);
     }
 
     public function test_guardian_invitation_accept_rejects_case_variant_existing_email(): void
@@ -144,6 +151,8 @@ class GuardianAuthTest extends TestCase
 
     public function test_existing_guardian_must_authenticate_before_accepting_invitation(): void
     {
+        Notification::fake();
+
         $token = SecureToken::generate();
 
         $invitation = ChildInvitation::create([
@@ -184,6 +193,8 @@ class GuardianAuthTest extends TestCase
             'child_id' => $this->child->id,
             'kindergarten_id' => $this->kindergarten->id,
         ]);
+
+        Notification::assertNotSentTo($this->guardian, GuardianEmailVerificationNotification::class);
     }
 
     public function test_guardian_login_and_refresh_work_with_token_rotation(): void

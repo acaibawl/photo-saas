@@ -38,6 +38,13 @@ export default defineNuxtPlugin(() => {
 
   const applyAuthHeader = (path: string, incoming: HeadersInit | undefined): Headers => {
     const headers = new Headers(incoming)
+
+    // Accept未指定だとブラウザのデフォルト(*/*)が送られ、
+    // バックエンドの expectsJson() 判定がfalseになりリダイレクト分岐に入ってしまう
+    if (!headers.has('Accept')) {
+      headers.set('Accept', 'application/json')
+    }
+
     const realm = resolveRealm(path)
 
     if (realm === 'staff' && authStore.staffAccessToken) {

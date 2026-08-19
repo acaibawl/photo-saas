@@ -15,7 +15,7 @@ use App\Models\ChildInvitation;
 use App\Models\Guardian;
 use App\Models\GuardianChild;
 use App\Models\GuardianRefreshToken;
-use Illuminate\Auth\Notifications\VerifyEmail;
+use App\Notifications\GuardianEmailVerificationNotification;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -57,7 +57,9 @@ final class GuardianAuthService
         string $ipAddress,
         ?string $userAgent = null,
     ): array {
-        return DB::transaction(function () use ($rawToken, $name, $email, $password, $ipAddress, $userAgent): array {
+        $newGuardian = null;
+
+        $result = DB::transaction(function () use ($rawToken, $name, $email, $password, $ipAddress, $userAgent, &$newGuardian): array {
             $normalizedEmail = EmailAddress::fromString($email)->normalized();
 
             /** @var ChildInvitation|null $invitation */
@@ -87,6 +89,7 @@ final class GuardianAuthService
                     'email' => $normalizedEmail,
                     'password_hash' => Hash::make($password),
                 ]);
+                $newGuardian = $guardian;
             } elseif (! Hash::check($password, $guardian->password_hash)) {
                 throw new GuardianEmailAlreadyExistsException;
             }
@@ -129,6 +132,12 @@ final class GuardianAuthService
                 'refresh_token' => $tokens['refresh_token'],
             ];
         });
+
+        if ($newGuardian instanceof Guardian) {
+            $this->sendEmailVerificationNotification($newGuardian);
+        }
+
+        return $result;
     }
 
     public function login(string $email, string $password, string $ipAddress, ?string $userAgent = null): array
@@ -224,7 +233,7 @@ final class GuardianAuthService
 
     public function sendEmailVerificationNotification(Guardian $guardian): bool
     {
-        $guardian->notify(new VerifyEmail);
+        $guardian->notify(new GuardianEmailVerificationNotification);
 
         return true;
     }
