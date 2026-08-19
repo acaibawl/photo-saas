@@ -181,6 +181,8 @@ class StaffStripeConnectTest extends TestCase
         ])->save();
 
         $payload = json_encode([
+            'id' => 'evt_account_updated_1',
+            'created' => 1_755_500_001,
             'type' => 'account.updated',
             'data' => [
                 'object' => [
@@ -317,6 +319,8 @@ class StaffStripeConnectTest extends TestCase
         ])->save();
 
         $enabledPayload = json_encode([
+            'id' => 'evt_account_updated_enabled',
+            'created' => 1_755_500_002,
             'type' => 'account.updated',
             'data' => [
                 'object' => [
@@ -333,6 +337,8 @@ class StaffStripeConnectTest extends TestCase
         self::assertNotNull($this->kindergartenA->stripe_onboarding_completed_at);
 
         $disabledPayload = json_encode([
+            'id' => 'evt_account_updated_disabled',
+            'created' => 1_755_500_003,
             'type' => 'account.updated',
             'data' => [
                 'object' => [
@@ -347,6 +353,88 @@ class StaffStripeConnectTest extends TestCase
 
         $this->kindergartenA->refresh();
         self::assertNull($this->kindergartenA->stripe_onboarding_completed_at);
+    }
+
+    public function test_webhook_ignores_duplicate_events(): void
+    {
+        config()->set('services.stripe.webhook_secret', 'whsec_test_123');
+
+        $this->kindergartenA->forceFill([
+            'stripe_account_id' => 'acct_987654321',
+        ])->save();
+
+        $enabledPayload = json_encode([
+            'id' => 'evt_duplicate_account_updated',
+            'created' => 1_755_500_004,
+            'type' => 'account.updated',
+            'data' => [
+                'object' => [
+                    'id' => 'acct_987654321',
+                    'charges_enabled' => true,
+                ],
+            ],
+        ], JSON_THROW_ON_ERROR);
+
+        $disabledPayload = json_encode([
+            'id' => 'evt_duplicate_account_updated',
+            'created' => 1_755_500_004,
+            'type' => 'account.updated',
+            'data' => [
+                'object' => [
+                    'id' => 'acct_987654321',
+                    'charges_enabled' => false,
+                ],
+            ],
+        ], JSON_THROW_ON_ERROR);
+
+        $service = app(StripeConnectService::class);
+        $service->handleAccountUpdatedWebhook($enabledPayload, $this->signedStripeSignature($enabledPayload, 'whsec_test_123'));
+        $service->handleAccountUpdatedWebhook($disabledPayload, $this->signedStripeSignature($disabledPayload, 'whsec_test_123'));
+
+        $this->kindergartenA->refresh();
+        self::assertNotNull($this->kindergartenA->stripe_onboarding_completed_at);
+        $this->assertDatabaseCount('stripe_webhook_events', 1);
+    }
+
+    public function test_webhook_ignores_events_older_than_the_latest_event_for_account(): void
+    {
+        config()->set('services.stripe.webhook_secret', 'whsec_test_123');
+
+        $this->kindergartenA->forceFill([
+            'stripe_account_id' => 'acct_987654321',
+        ])->save();
+
+        $enabledPayload = json_encode([
+            'id' => 'evt_new_account_updated',
+            'created' => 1_755_500_006,
+            'type' => 'account.updated',
+            'data' => [
+                'object' => [
+                    'id' => 'acct_987654321',
+                    'charges_enabled' => true,
+                ],
+            ],
+        ], JSON_THROW_ON_ERROR);
+
+        $disabledPayload = json_encode([
+            'id' => 'evt_old_account_updated',
+            'created' => 1_755_500_005,
+            'type' => 'account.updated',
+            'data' => [
+                'object' => [
+                    'id' => 'acct_987654321',
+                    'charges_enabled' => false,
+                ],
+            ],
+        ], JSON_THROW_ON_ERROR);
+
+        $service = app(StripeConnectService::class);
+        $service->handleAccountUpdatedWebhook($enabledPayload, $this->signedStripeSignature($enabledPayload, 'whsec_test_123'));
+        $service->handleAccountUpdatedWebhook($disabledPayload, $this->signedStripeSignature($disabledPayload, 'whsec_test_123'));
+
+        $this->kindergartenA->refresh();
+        self::assertNotNull($this->kindergartenA->stripe_onboarding_completed_at);
+        $this->assertDatabaseCount('stripe_webhook_events', 2);
     }
 
     public function test_sales_availability_is_disabled_when_charges_are_disabled(): void

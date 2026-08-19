@@ -2,7 +2,9 @@
 
 namespace App\Application\Kindergarten;
 
+use App\Application\Shared\Exceptions\StripeWebhookValidationException;
 use App\Models\Kindergarten;
+use App\Models\StripeWebhookEvent;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -100,7 +102,7 @@ final class StripeConnectService
         try {
             $event = json_decode($payload, true, 512, JSON_THROW_ON_ERROR);
         } catch (JsonException) {
-            throw new RuntimeException('Stripe webhook payload is invalid');
+            throw new StripeWebhookValidationException('Stripe webhook payload is invalid');
         }
 
         if (! is_array($event) || ($event['type'] ?? null) !== 'account.updated') {
@@ -119,27 +121,50 @@ final class StripeConnectService
             return;
         }
 
-        $kindergarten = Kindergarten::query()->where('stripe_account_id', $stripeAccountId)->first();
+        $eventId = data_get($event, 'id');
+        $eventCreated = data_get($event, 'created');
 
-        if ($kindergarten === null) {
+        if (! is_string($eventId) || trim($eventId) === '' || ! is_int($eventCreated)) {
             return;
         }
 
         $chargesEnabled = (bool) data_get($account, 'charges_enabled', false);
 
-        if ($chargesEnabled) {
-            if ($kindergarten->stripe_onboarding_completed_at === null) {
-                $kindergarten->forceFill([
-                    'stripe_onboarding_completed_at' => now(),
-                ])->save();
+        DB::transaction(function () use ($eventId, $eventCreated, $stripeAccountId, $chargesEnabled): void {
+            $kindergarten = Kindergarten::query()
+                ->where('stripe_account_id', $stripeAccountId)
+                ->lockForUpdate()
+                ->first();
+
+            if ($kindergarten === null) {
+                return;
             }
 
-            return;
-        }
+            $eventQuery = StripeWebhookEvent::query()->where('event_id', $eventId);
 
-        $kindergarten->forceFill([
-            'stripe_onboarding_completed_at' => null,
-        ])->save();
+            if ($eventQuery->exists()) {
+                return;
+            }
+
+            $latestEventCreated = StripeWebhookEvent::query()
+                ->where('stripe_account_id', $stripeAccountId)
+                ->max('event_created');
+
+            StripeWebhookEvent::query()->create([
+                'event_id' => $eventId,
+                'event_type' => 'account.updated',
+                'stripe_account_id' => $stripeAccountId,
+                'event_created' => $eventCreated,
+            ]);
+
+            if ($latestEventCreated !== null && $eventCreated < (int) $latestEventCreated) {
+                return;
+            }
+
+            $kindergarten->forceFill([
+                'stripe_onboarding_completed_at' => $chargesEnabled ? now() : null,
+            ])->save();
+        });
     }
 
     private function resolveOrCreateStripeAccountId(Kindergarten $kindergarten): string
@@ -337,18 +362,18 @@ final class StripeConnectService
         }
 
         if (! is_string($timestamp) || trim($timestamp) === '' || ! is_numeric($timestamp)) {
-            throw new RuntimeException('Stripe webhook signature is invalid');
+            throw new StripeWebhookValidationException('Stripe webhook signature is invalid');
         }
 
         $timestampValue = (int) $timestamp;
         $now = time();
 
         if (abs($timestampValue - $now) > 300) {
-            throw new RuntimeException('Stripe webhook signature is invalid');
+            throw new StripeWebhookValidationException('Stripe webhook signature is invalid');
         }
 
         if ($v1Signatures === []) {
-            throw new RuntimeException('Stripe webhook signature is invalid');
+            throw new StripeWebhookValidationException('Stripe webhook signature is invalid');
         }
 
         foreach ($v1Signatures as $v1Signature) {
@@ -359,7 +384,7 @@ final class StripeConnectService
             }
         }
 
-        throw new RuntimeException('Stripe webhook signature is invalid');
+        throw new StripeWebhookValidationException('Stripe webhook signature is invalid');
     }
 
     private function stripeUrl(string $path): string
