@@ -2,12 +2,12 @@
 
 namespace App\Http\Controllers\PublicApi;
 
+use App\Application\Shared\Exceptions\StripeWebhookValidationException;
 use App\Application\Guardian\Purchase\OrderFulfillmentService;
 use App\Application\Kindergarten\StripeConnectService;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use RuntimeException;
 
 class PurchaseWebhookController extends Controller
 {
@@ -25,7 +25,7 @@ class PurchaseWebhookController extends Controller
 
             // Connectアカウントの状態更新イベント（account.updated）を処理する。対象外のイベントは内部で無視される。
             $stripeConnectService->handleAccountUpdatedWebhook($payload, $signatureHeader);
-        } catch (RuntimeException) {
+        } catch (StripeWebhookValidationException) {
             return response()->json([
                 'message' => 'Stripe webhook error',
                 'code' => 'STRIPE_WEBHOOK_ERROR',

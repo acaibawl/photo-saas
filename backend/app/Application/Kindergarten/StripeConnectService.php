@@ -2,6 +2,7 @@
 
 namespace App\Application\Kindergarten;
 
+use App\Application\Shared\Exceptions\StripeWebhookValidationException;
 use App\Models\Kindergarten;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -100,7 +101,7 @@ final class StripeConnectService
         try {
             $event = json_decode($payload, true, 512, JSON_THROW_ON_ERROR);
         } catch (JsonException) {
-            throw new RuntimeException('Stripe webhook payload is invalid');
+            throw new StripeWebhookValidationException('Stripe webhook payload is invalid');
         }
 
         if (! is_array($event) || ($event['type'] ?? null) !== 'account.updated') {
@@ -337,18 +338,18 @@ final class StripeConnectService
         }
 
         if (! is_string($timestamp) || trim($timestamp) === '' || ! is_numeric($timestamp)) {
-            throw new RuntimeException('Stripe webhook signature is invalid');
+            throw new StripeWebhookValidationException('Stripe webhook signature is invalid');
         }
 
         $timestampValue = (int) $timestamp;
         $now = time();
 
         if (abs($timestampValue - $now) > 300) {
-            throw new RuntimeException('Stripe webhook signature is invalid');
+            throw new StripeWebhookValidationException('Stripe webhook signature is invalid');
         }
 
         if ($v1Signatures === []) {
-            throw new RuntimeException('Stripe webhook signature is invalid');
+            throw new StripeWebhookValidationException('Stripe webhook signature is invalid');
         }
 
         foreach ($v1Signatures as $v1Signature) {
@@ -359,7 +360,7 @@ final class StripeConnectService
             }
         }
 
-        throw new RuntimeException('Stripe webhook signature is invalid');
+        throw new StripeWebhookValidationException('Stripe webhook signature is invalid');
     }
 
     private function stripeUrl(string $path): string
