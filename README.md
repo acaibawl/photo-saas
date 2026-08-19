@@ -8,7 +8,7 @@ On macOS, generate them with `mkcert` so the certificate chains to a locally tru
 
 Before any Docker build or run step, configure host name resolution so your browser can resolve local domains.
 
-- Add `frontend.local` and `backend.local` to `/etc/hosts` (or your local DNS) and map both to `127.0.0.1`.
+- Add `frontend.local`, `backend.local`, and `storage.local` to `/etc/hosts` (or your local DNS) and map them to `127.0.0.1`.
 - Treat `photo-saas.local` as a separate domain. If you need to access it directly in a browser, add its own mapping separately.
 
 ```bash
@@ -19,9 +19,31 @@ bash ./containers/nginx/certs/generate-cert.sh
 
 Run `mkcert -install` once from an interactive terminal. It may ask for your macOS password to add the local development CA to Keychain Access.
 
-`generate-cert.sh` then issues a certificate for `frontend.local` and `backend.local` using that trusted local CA.
+`generate-cert.sh` then issues a certificate for `frontend.local`, `backend.local`, and `storage.local` using that trusted local CA.
+
+## Local object storage
+
+Development uses MinIO as an S3-compatible object store. Start the stack with:
+
+```bash
+docker compose up -d
+```
+
+The `minio-init` service creates the `photo-saas` bucket and applies the local CORS policy automatically.
+
+- MinIO Console: `http://localhost:9001`
+- MinIO credentials: `minio` / `minio-password`
+- Browser object endpoint: `https://storage.local`
 
 If you have an older self-signed certificate in Keychain Access, remove it before retrying so the browser only sees the `mkcert`-signed certificate.
+
+## 証明書の再生成が必要な場合は下記を実行
+
+```bash
+mkcert -install
+bash ./containers/nginx/certs/generate-cert.sh
+docker compose restart nginx
+```
 
 ## DB migration
 

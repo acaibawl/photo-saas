@@ -8,6 +8,8 @@ use App\Domain\Album\Exceptions\AlbumTenantScopeViolationException;
 use App\Domain\Child\Exceptions\ChildTenantScopeViolationException;
 use App\Domain\Photo\Exceptions\PhotoNotFoundException;
 use App\Domain\Photo\Exceptions\PhotoNotReadyForUpdateException;
+use App\Domain\Photo\PhotoPreviewStatus;
+use App\Domain\Photo\PhotoPriceStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Staff\ListPhotosRequest;
 use App\Http\Requests\Staff\UpdatePhotoRequest;
@@ -19,6 +21,40 @@ use Illuminate\Http\Request;
 
 class PhotoController extends Controller
 {
+    public function priceStatuses(Request $request): JsonResponse
+    {
+        if ($this->resolveAuthenticatedStaff($request) === null) {
+            return $this->unauthenticatedResponse();
+        }
+
+        return response()->json([
+            'data' => array_map(
+                fn (PhotoPriceStatus $status): array => [
+                    'value' => $status->value,
+                    'label' => $status->label(),
+                ],
+                PhotoPriceStatus::cases(),
+            ),
+        ]);
+    }
+
+    public function previewStatuses(Request $request): JsonResponse
+    {
+        if ($this->resolveAuthenticatedStaff($request) === null) {
+            return $this->unauthenticatedResponse();
+        }
+
+        return response()->json([
+            'data' => array_map(
+                fn (PhotoPreviewStatus $status): array => [
+                    'value' => $status->value,
+                    'label' => $status->label(),
+                ],
+                PhotoPreviewStatus::cases(),
+            ),
+        ]);
+    }
+
     public function uploadBatch(UploadPhotoBatchRequest $request, PhotoManagementService $service): JsonResponse
     {
         $staff = $this->resolveAuthenticatedStaff($request);
