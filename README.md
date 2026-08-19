@@ -48,32 +48,32 @@ docker compose restart nginx
 ## DB migration
 
 ```bash
-docker compose run --rm backend php artisan migrate:fresh --seed
+docker compose exec php php artisan migrate:fresh --seed
 ```
 
 テスト用
 
 ```bash
-docker compose run --rm backend php artisan migrate:fresh --seed --env=testing
+docker compose exec php php artisan migrate:fresh --seed --env=testing
 ```
 
 ## ide-helper用意
 
 ```bash
-docker compose run --rm backend php artisan ide-helper:generate
-docker compose run --rm backend php artisan ide-helper:meta
+docker compose exec php php artisan ide-helper:generate
+docker compose exec php php artisan ide-helper:meta
 ```
 
 ### モデルの更新
 
 ```bash
-docker compose run --rm backend php artisan ide-helper:models --write --reset
+docker compose exec php php artisan ide-helper:models --write --reset
 ```
 
 ## テスト実行
 
 ```bash
-docker compose run --rm backend php artisan test
+docker compose exec php php artisan test
 ```
 
 ## Laravel Boost実行
