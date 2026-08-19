@@ -83,3 +83,39 @@ phpコンテナで実行
 ```bash
 php artisan boost:mcp
 ```
+
+## Stripe Webhookのローカル受信（Stripe CLI）
+
+Stripe Connectのオンボーディング状況（`account.updated`）や決済完了（`checkout.session.completed`）はWebhook経由でDBに反映される。ローカルで動作確認するには [Stripe CLI](https://docs.stripe.com/stripe-cli) を使ってイベントを転送する。
+
+1. Stripe CLIをインストールし、Stripeアカウントでログインする。
+
+   ```bash
+   brew install stripe/stripe-cli/stripe
+   stripe login
+   ```
+
+2. `backend/.env` の `STRIPE_SECRET` にStripeのテスト用シークレットキー（`sk_test_...`）を設定する。
+
+3. Webhookをbackendコンテナへ転送する。このコマンドは起動したままにしておく。
+
+   ```bash
+   stripe listen --forward-to https://backend.local/public/stripe/webhook
+   ```
+
+   起動すると `Ready! ... Your webhook signing secret is whsec_...` と表示される。この値を `backend/.env` の `STRIPE_WEBHOOK_SECRET` に設定し、設定キャッシュをクリアする。
+
+   ```bash
+   docker compose exec php php artisan config:clear
+   ```
+
+4. 別ターミナルで疎通確認用のイベントを発火できる。
+
+   ```bash
+   stripe trigger checkout.session.completed
+   stripe trigger account.updated
+   ```
+
+   `stripe trigger` は架空のテスト用オブジェクトに対してイベントを発火するため、実際にアプリ内で作成した注文やConnectアカウントとはIDが一致しない。そのため、`stripe listen` 側で200が返ってもDBの状態（`orders.status`や`kindergartens.stripe_onboarding_completed_at`）が更新されないことがある。実データで確認したい場合は、アプリの購入導線やStripeダッシュボード上の実アカウント操作を通じて実イベントを発生させる。
+
+5. ルートパスに `/api` プレフィックスは付かない（`backend/bootstrap/app.php` の `apiPrefix: ''` による）。`--forward-to` のURLを `https://backend.local/api/public/stripe/webhook` のように書くと404になるので注意する。
