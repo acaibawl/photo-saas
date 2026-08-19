@@ -1,35 +1,16 @@
 <script setup lang="ts">
-definePageMeta({ middleware: ["staff-auth"] });
+import type {
+  Album,
+  BatchStatus,
+  Child,
+  OptionsResponse,
+  PageResponse,
+  Photo,
+  PhotoDetail,
+  SelectOption,
+} from '~/types/shared'
 
-type Child = { id: string; name: string; class_name: string };
-type Album = { id: string; title: string; event_date: string };
-type SelectOption = { value: string; label: string };
-type Photo = {
-  photo_id: string;
-  album_id: string | null;
-  price: number | null;
-  is_sellable: boolean;
-  preview_status: "queued" | "ready" | "failed";
-  preview_url: string | null;
-  created_at: string | null;
-  tagged_child_ids: string[];
-};
-type PhotoDetail = Photo & {
-  album_title: string | null;
-  original_url: string | null;
-  tagged_children: Array<{ child_id: string; name: string; class_name: string }>;
-};
-type PageResponse<T> = {
-  data: T[];
-  meta: { current_page: number; per_page: number; total: number };
-};
-type BatchStatus = {
-  batch_id: string;
-  status: string;
-  accepted_count: number;
-  total_files: number;
-};
-type OptionsResponse = { data: SelectOption[] };
+definePageMeta({ middleware: ["staff-auth"] });
 
 const { $api } = useNuxtApp();
 const { normalizeError } = useApiError();
@@ -39,8 +20,16 @@ const children = ref<Child[]>([]);
 const albums = ref<Album[]>([]);
 const priceOptions = ref<SelectOption[]>([{ label: "すべて", value: "all" }]);
 const previewOptions = ref<SelectOption[]>([{ label: "すべて", value: "all" }]);
+const previewStatusLabelMap = computed(() =>
+  Object.fromEntries(
+    previewOptions.value
+      .filter((option) => option.value !== "all")
+      .map((option) => [option.value, option.label]),
+  ),
+);
 const total = ref(0);
 const currentPage = ref(1);
+const pageSize = 24;
 const isLoading = ref(true);
 const pageError = ref("");
 const filters = reactive({
@@ -60,6 +49,8 @@ const uploadForm = reactive({ album_id: "", price: "", child_ids: [] as string[]
 const editForm = reactive({ album_id: "", price: "", child_ids: [] as string[] });
 const batch = ref<BatchStatus | null>(null);
 let pollTimer: ReturnType<typeof setTimeout> | undefined;
+let activePollBatchId: string | null = null;
+let pollGeneration = 0;
 
 const albumOptions = computed(() => {
   return albums.value.map((album) => ({ label: album.title, value: album.id }));
@@ -93,7 +84,7 @@ async function unauthorized(): Promise<void> {
   await logout().catch(() => undefined);
   await navigateTo("/staff/login");
 }
-async function loadData(): Promise<void> {
+async function loadData(page = currentPage.value): Promise<void> {
   isLoading.value = true;
   pageError.value = "";
   try {
@@ -106,8 +97,8 @@ async function loadData(): Promise<void> {
     ] = await Promise.all([
       $api<PageResponse<Photo>>("/staff/photos", {
         query: {
-          page: currentPage.value,
-          per_page: 24,
+          page,
+          per_page: pageSize,
           ...photoQueryFilters.value,
         },
       }),
@@ -135,6 +126,13 @@ async function loadData(): Promise<void> {
     isLoading.value = false;
   }
 }
+
+async function goToPage(page: number): Promise<void> {
+  const nextPage = Math.max(1, Number(page) || 1);
+  currentPage.value = nextPage;
+  await loadData(nextPage);
+}
+
 function resetUpload(): void {
   uploadForm.album_id = "";
   uploadForm.price = "";
@@ -149,6 +147,8 @@ function handleFiles(event: Event): void {
 }
 
 async function createAlbum(): Promise<void> {
+  // アルバム名の簡易入力はダイアログでの対話入力が必要なため許容する。
+  // eslint-disable-next-line no-alert
   const title = window.prompt("アルバム名を入力してください");
   if (!title?.trim()) return;
 
@@ -196,17 +196,37 @@ async function uploadBatch(): Promise<void> {
   }
 }
 
+function stopPolling(): void {
+  pollGeneration += 1;
+  activePollBatchId = null;
+  if (pollTimer) clearTimeout(pollTimer);
+  pollTimer = undefined;
+}
+
 function pollBatch(id: string): void {
+  stopPolling();
+  activePollBatchId = id;
+  const generation = pollGeneration;
+
   pollTimer = setTimeout(async () => {
+    pollTimer = undefined;
     try {
-      batch.value = await $api<BatchStatus>(`/staff/photos/upload-batch/${id}`);
-      if (["completed", "failed"].includes(batch.value.status)) {
+      const nextBatch = await $api<BatchStatus>(`/staff/photos/upload-batch/${id}`);
+      if (generation !== pollGeneration || activePollBatchId !== id) return;
+
+      batch.value = nextBatch;
+      if (["completed", "failed"].includes(nextBatch.status)) {
+        stopPolling();
         await loadData();
         return;
       }
 
-      pollBatch(id);
-    } catch (error) { uploadError.value = normalizeError(error).message; }
+      if (generation !== pollGeneration || activePollBatchId !== id) return;
+      pollTimer = setTimeout(() => pollBatch(id), 1500);
+    } catch (error) {
+      if (generation !== pollGeneration || activePollBatchId !== id) return;
+      uploadError.value = normalizeError(error).message;
+    }
   }, 1500);
 }
 
@@ -259,11 +279,11 @@ function formatPrice(price: number | null): string {
 }
 
 function statusLabel(status: Photo["preview_status"]): string {
-  return { queued: "処理待ち", ready: "準備完了", failed: "処理失敗" }[status];
+  return previewStatusLabelMap.value[status] ?? status;
 }
 
 onMounted(() => void loadData());
-onBeforeUnmount(() => { if (pollTimer) clearTimeout(pollTimer); });
+onBeforeUnmount(stopPolling);
 </script>
 
 <template>
@@ -295,7 +315,7 @@ onBeforeUnmount(() => { if (pollTimer) clearTimeout(pollTimer); });
 
       <UAlert v-if="pageError" color="error" variant="soft" :title="pageError">
         <template #actions>
-          <UButton color="error" variant="ghost" size="sm" @click="loadData">
+          <UButton color="error" variant="ghost" size="sm" @click="() => loadData()">
             再読み込み
           </UButton>
         </template>
@@ -344,8 +364,11 @@ onBeforeUnmount(() => { if (pollTimer) clearTimeout(pollTimer); });
         v-if="batch"
         color="info"
         variant="soft"
-        :title="`アップロード ${batch.status === 'completed' ? '完了' : '処理中'}（${batch.accepted_count}/${batch.total_files}）`"
+        :title="`アップロード ${batch.status === 'completed' ? '完了' : batch.status === 'failed' ? '失敗' : '処理中'}（${batch.accepted_count}/${batch.total_files}）`"
       >
+        <p v-if="batch.status === 'failed'" class="text-sm text-slate-700">
+          一部またはすべての写真のアップロードに失敗しました。ファイルを確認して再試行してください。
+        </p>
         <UProgress :model-value="batchProgress" class="mt-3" />
       </UAlert>
 
@@ -385,7 +408,7 @@ onBeforeUnmount(() => { if (pollTimer) clearTimeout(pollTimer); });
                   :alt="`写真 ${photo.photo_id}`"
                   loading="lazy"
                   class="size-full object-cover"
-                />
+                >
                 <div v-else class="flex size-full items-center justify-center">
                   <UIcon name="i-lucide-image" class="size-8 text-slate-400" />
                 </div>
@@ -410,6 +433,15 @@ onBeforeUnmount(() => { if (pollTimer) clearTimeout(pollTimer); });
               </div>
             </button>
           </UCard>
+        </div>
+
+        <div v-if="total > pageSize" class="flex justify-center pt-6">
+          <UPagination
+            :page="currentPage"
+            :items-per-page="pageSize"
+            :total="total"
+            @update:page="goToPage"
+          />
         </div>
       </section>
     </div>
@@ -482,7 +514,7 @@ onBeforeUnmount(() => { if (pollTimer) clearTimeout(pollTimer); });
             :src="selectedPhoto.preview_url"
             alt="写真プレビュー"
             class="aspect-square w-full rounded-lg object-cover"
-          />
+          >
           <UFormField label="アルバム">
             <USelect
               v-model="editForm.album_id"

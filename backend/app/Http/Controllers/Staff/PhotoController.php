@@ -3,13 +3,13 @@
 namespace App\Http\Controllers\Staff;
 
 use App\Application\Staff\Photo\PhotoManagementService;
-use App\Domain\Photo\PhotoPreviewStatus;
-use App\Domain\Photo\PhotoPriceStatus;
 use App\Domain\Album\Exceptions\AlbumNotFoundException;
 use App\Domain\Album\Exceptions\AlbumTenantScopeViolationException;
 use App\Domain\Child\Exceptions\ChildTenantScopeViolationException;
 use App\Domain\Photo\Exceptions\PhotoNotFoundException;
 use App\Domain\Photo\Exceptions\PhotoNotReadyForUpdateException;
+use App\Domain\Photo\PhotoPreviewStatus;
+use App\Domain\Photo\PhotoPriceStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Staff\ListPhotosRequest;
 use App\Http\Requests\Staff\UpdatePhotoRequest;

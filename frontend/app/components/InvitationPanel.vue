@@ -42,7 +42,7 @@ async function generateQrUrl(invitation: CreatedInvitation): Promise<void> {
 }
 async function copyInviteUrl(): Promise<void> {
   if (created.value)
-    await navigator.clipboard.writeText(created.value.invite_url);
+    {await navigator.clipboard.writeText(created.value.invite_url);}
 }
 async function unauthorized(): Promise<void> {
   await logout().catch(() => undefined);
@@ -181,7 +181,7 @@ onMounted(load);
         :src="qrUrl"
         alt="招待URLのQRコード"
         class="size-[220px] rounded border border-slate-200 p-2"
-      />
+      >
       <div class="space-y-3">
         <p class="font-medium text-slate-900">招待を発行しました</p>
         <UInput :model-value="created.invite_url" readonly />
