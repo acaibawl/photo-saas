@@ -121,6 +121,21 @@ class StaffAlbumPhotoManagementTest extends TestCase
     public function test_staff_album_and_photo_endpoints_require_authentication(): void
     {
         $this->withHeaders(['Accept' => 'application/json'])
+            ->getJson('/staff/albums')
+            ->assertStatus(401)
+            ->assertJsonPath('code', 'STAFF_AUTH_REQUIRED');
+
+        $this->withHeaders(['Accept' => 'application/json'])
+            ->getJson('/staff/photos/price-statuses')
+            ->assertStatus(401)
+            ->assertJsonPath('code', 'STAFF_AUTH_REQUIRED');
+
+        $this->withHeaders(['Accept' => 'application/json'])
+            ->getJson('/staff/photos/preview-statuses')
+            ->assertStatus(401)
+            ->assertJsonPath('code', 'STAFF_AUTH_REQUIRED');
+
+        $this->withHeaders(['Accept' => 'application/json'])
             ->getJson('/staff/photos')
             ->assertStatus(401)
             ->assertJsonPath('code', 'STAFF_AUTH_REQUIRED');
@@ -132,6 +147,41 @@ class StaffAlbumPhotoManagementTest extends TestCase
             ])
             ->assertStatus(401)
             ->assertJsonPath('code', 'STAFF_AUTH_REQUIRED');
+    }
+
+    public function test_staff_can_list_only_albums_from_their_kindergarten(): void
+    {
+        $response = $this->withHeaders($this->authHeaders($this->staffA))
+            ->getJson('/staff/albums?per_page=100');
+
+        $response->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.id', $this->albumA->id)
+            ->assertJsonPath('data.0.title', '夏まつり')
+            ->assertJsonPath('data.0.event_date', '2026-07-20');
+    }
+
+    public function test_staff_can_list_photo_filter_statuses(): void
+    {
+        $priceResponse = $this->withHeaders($this->authHeaders($this->staffA))
+            ->getJson('/staff/photos/price-statuses');
+
+        $priceResponse->assertOk()
+            ->assertJsonPath('data.0.value', 'set')
+            ->assertJsonPath('data.0.label', '価格設定済み')
+            ->assertJsonPath('data.1.value', 'unset')
+            ->assertJsonPath('data.1.label', '未設定');
+
+        $previewResponse = $this->withHeaders($this->authHeaders($this->staffA))
+            ->getJson('/staff/photos/preview-statuses');
+
+        $previewResponse->assertOk()
+            ->assertJsonPath('data.0.value', 'queued')
+            ->assertJsonPath('data.0.label', '処理待ち')
+            ->assertJsonPath('data.1.value', 'ready')
+            ->assertJsonPath('data.1.label', '準備完了')
+            ->assertJsonPath('data.2.value', 'failed')
+            ->assertJsonPath('data.2.label', '処理失敗');
     }
 
     public function test_staff_can_create_album(): void

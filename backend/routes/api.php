@@ -34,6 +34,7 @@ Route::prefix('/staff/auth')->group(function (): void {
 });
 
 Route::prefix('/staff')->middleware('auth:staff')->group(function (): void {
+    Route::get('/albums', [AlbumController::class, 'index']);
     Route::post('/albums', [AlbumController::class, 'store']);
 
     Route::prefix('/stripe')->group(function (): void {
@@ -53,6 +54,8 @@ Route::prefix('/staff')->middleware('auth:staff')->group(function (): void {
 
     Route::post('/photos/upload-batch', [PhotoController::class, 'uploadBatch']);
     Route::get('/photos/upload-batch/{uploadRequestId}', [PhotoController::class, 'batchStatus']);
+    Route::get('/photos/price-statuses', [PhotoController::class, 'priceStatuses']);
+    Route::get('/photos/preview-statuses', [PhotoController::class, 'previewStatuses']);
     Route::get('/photos', [PhotoController::class, 'index']);
     Route::get('/photos/{photoId}', [PhotoController::class, 'show']);
     Route::patch('/photos/{photoId}', [PhotoController::class, 'update']);

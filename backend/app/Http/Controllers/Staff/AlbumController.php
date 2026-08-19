@@ -5,12 +5,45 @@ namespace App\Http\Controllers\Staff;
 use App\Application\Staff\Album\AlbumManagementService;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Staff\CreateAlbumRequest;
+use App\Http\Requests\Staff\ListAlbumsRequest;
+use App\Models\Album;
 use App\Models\KindergartenStaff;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class AlbumController extends Controller
 {
+    public function index(ListAlbumsRequest $request, AlbumManagementService $service): JsonResponse
+    {
+        $staff = $this->resolveAuthenticatedStaff($request);
+
+        if ($staff === null) {
+            return $this->unauthenticatedResponse();
+        }
+
+        $paginator = $service->listAlbums(
+            $staff,
+            $request->integer('page', 1),
+            $request->integer('per_page', 20),
+        );
+
+        return response()->json([
+            'data' => array_map(fn (Album $album): array => [
+                'id' => $album->id,
+                'kindergarten_id' => $album->kindergarten_id,
+                'title' => $album->title,
+                'event_date' => $album->event_date?->toDateString(),
+                'created_at' => $album->created_at?->toIso8601String(),
+                'updated_at' => $album->updated_at?->toIso8601String(),
+            ], $paginator->items()),
+            'meta' => [
+                'current_page' => $paginator->currentPage(),
+                'per_page' => $paginator->perPage(),
+                'total' => $paginator->total(),
+            ],
+        ]);
+    }
+
     public function store(CreateAlbumRequest $request, AlbumManagementService $service): JsonResponse
     {
         $staff = $this->resolveAuthenticatedStaff($request);

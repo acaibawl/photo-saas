@@ -4,9 +4,19 @@ namespace App\Application\Staff\Album;
 
 use App\Models\Album;
 use App\Models\KindergartenStaff;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 
 final class AlbumManagementService
 {
+    public function listAlbums(KindergartenStaff $actor, int $page, int $perPage): LengthAwarePaginator
+    {
+        return Album::query()
+            ->where('kindergarten_id', $actor->kindergarten_id)
+            ->orderByDesc('event_date')
+            ->orderByDesc('created_at')
+            ->paginate($perPage, ['*'], 'page', $page);
+    }
+
     public function createAlbum(KindergartenStaff $actor, string $title, string $eventDate): array
     {
         $album = Album::create([

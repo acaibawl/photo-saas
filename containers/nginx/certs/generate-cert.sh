@@ -5,6 +5,7 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "$0")" && pwd)"
 cert_file="$script_dir/photo-saas.local.crt"
 key_file="$script_dir/photo-saas.local.key"
+ca_bundle_file="$script_dir/photo-saas.local-ca-bundle.crt"
 caroot="$(mkcert -CAROOT)"
 
 if ! command -v mkcert >/dev/null 2>&1; then
@@ -23,7 +24,8 @@ mkcert \
   -cert-file "$cert_file" \
   -key-file "$key_file" \
   frontend.local \
-  backend.local
+  backend.local \
+  storage.local
 
-# Append mkcert root CA so this single file can also be reused as Node's extra CA bundle.
-cat "$caroot/rootCA.pem" >> "$cert_file"
+# Keep the Nginx certificate as a leaf certificate. Node uses the separate CA bundle.
+cp "$caroot/rootCA.pem" "$ca_bundle_file"

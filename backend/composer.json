@@ -11,6 +11,7 @@
         "endroid/qr-code": "^6.1",
         "laravel/framework": "^13.8",
         "laravel/tinker": "^3.0",
+        "league/flysystem-aws-s3-v3": "^3.25",
         "tymon/jwt-auth": "^2.3"
     },
     "require-dev": {
