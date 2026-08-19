@@ -3,6 +3,7 @@
 namespace App\Application\Kindergarten;
 
 use App\Application\Shared\Exceptions\StripeWebhookValidationException;
+use App\Models\StripeWebhookEvent;
 use App\Models\Kindergarten;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -120,27 +121,54 @@ final class StripeConnectService
             return;
         }
 
-        $kindergarten = Kindergarten::query()->where('stripe_account_id', $stripeAccountId)->first();
+        $eventId = data_get($event, 'id');
+        $eventCreated = data_get($event, 'created');
 
-        if ($kindergarten === null) {
+        if (! is_string($eventId) || trim($eventId) === '' || ! is_int($eventCreated)) {
             return;
         }
 
         $chargesEnabled = (bool) data_get($account, 'charges_enabled', false);
 
-        if ($chargesEnabled) {
-            if ($kindergarten->stripe_onboarding_completed_at === null) {
-                $kindergarten->forceFill([
-                    'stripe_onboarding_completed_at' => now(),
-                ])->save();
+        DB::transaction(function () use ($eventId, $eventCreated, $stripeAccountId, $chargesEnabled): void {
+            $kindergarten = Kindergarten::query()
+                ->where('stripe_account_id', $stripeAccountId)
+                ->lockForUpdate()
+                ->first();
+
+            if ($kindergarten === null) {
+                return;
             }
 
-            return;
-        }
+            if (! $kindergarten instanceof Kindergarten) {
+                return;
+            }
 
-        $kindergarten->forceFill([
-            'stripe_onboarding_completed_at' => null,
-        ])->save();
+            $eventQuery = StripeWebhookEvent::query()->where('event_id', $eventId);
+
+            if ($eventQuery->exists()) {
+                return;
+            }
+
+            $latestEventCreated = StripeWebhookEvent::query()
+                ->where('stripe_account_id', $stripeAccountId)
+                ->max('event_created');
+
+            StripeWebhookEvent::query()->create([
+                'event_id' => $eventId,
+                'event_type' => 'account.updated',
+                'stripe_account_id' => $stripeAccountId,
+                'event_created' => $eventCreated,
+            ]);
+
+            if ($latestEventCreated !== null && $eventCreated < (int) $latestEventCreated) {
+                return;
+            }
+
+            $kindergarten->forceFill([
+                'stripe_onboarding_completed_at' => $chargesEnabled ? now() : null,
+            ])->save();
+        });
     }
 
     private function resolveOrCreateStripeAccountId(Kindergarten $kindergarten): string
