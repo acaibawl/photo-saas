@@ -32,7 +32,7 @@ class AlbumController extends Controller
                 'id' => $album->id,
                 'kindergarten_id' => $album->kindergarten_id,
                 'title' => $album->title,
-                'event_date' => $album->event_date?->toDateString(),
+                'event_date' => $album->event_date->toDateString(),
                 'created_at' => $album->created_at?->toIso8601String(),
                 'updated_at' => $album->updated_at?->toIso8601String(),
             ], $paginator->items()),
