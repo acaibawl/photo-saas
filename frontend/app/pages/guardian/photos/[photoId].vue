@@ -40,6 +40,7 @@ const isLoading = ref(true)
 const isPurchasing = ref(false)
 const pageError = ref('')
 const purchaseError = ref('')
+let previewRetried = false
 
 async function unauthorized(): Promise<void> {
   await logout().catch(() => undefined)
@@ -49,6 +50,7 @@ async function unauthorized(): Promise<void> {
 async function loadPhoto(): Promise<void> {
   isLoading.value = true
   pageError.value = ''
+  previewRetried = false
 
   try {
     photo.value = await $api<GuardianPhotoDetail>(`/guardian/photos/${photoId.value}`)
@@ -77,6 +79,14 @@ async function loadPhoto(): Promise<void> {
 }
 
 async function refreshPreview(): Promise<void> {
+  if (previewRetried) {
+    if (photo.value) {
+      photo.value.preview_url = null
+    }
+    return
+  }
+  previewRetried = true
+
   try {
     const response = await $api<{ preview_url: string | null }>(`/guardian/photos/${photoId.value}/preview-url`, {
       method: 'POST',
@@ -86,7 +96,9 @@ async function refreshPreview(): Promise<void> {
       photo.value.preview_url = response.preview_url
     }
   } catch {
-    // 再取得に失敗した場合はプレースホルダー表示のままにする
+    if (photo.value) {
+      photo.value.preview_url = null
+    }
   }
 }
 

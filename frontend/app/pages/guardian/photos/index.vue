@@ -47,6 +47,7 @@ const total = ref(0)
 const currentPage = ref(Number(route.query.page) > 0 ? Number(route.query.page) : 1)
 const isLoading = ref(true)
 const pageError = ref('')
+const filterError = ref('')
 const previewRetriedPhotoIds = new Set<string>()
 
 const filters = reactive({
@@ -72,17 +73,21 @@ async function unauthorized(): Promise<void> {
 }
 
 async function loadChildren(): Promise<void> {
+  filterError.value = ''
+
   try {
     const response = await fetchChildren()
     children.value = response.data
   } catch (error) {
     const normalized = normalizeError(error)
     if (normalized.status === 401) return await unauthorized()
-    pageError.value = normalized.message
+    filterError.value = normalized.message
   }
 }
 
 async function loadAlbums(): Promise<void> {
+  filterError.value = ''
+
   try {
     const response = await $api<{ data: GuardianPhotoAlbum[] }>('/guardian/albums', {
       query: { child_id: filters.child_id === 'all' ? undefined : filters.child_id },
@@ -91,11 +96,18 @@ async function loadAlbums(): Promise<void> {
   } catch (error) {
     const normalized = normalizeError(error)
     if (normalized.status === 401) return await unauthorized()
-    pageError.value = normalized.message
+    filterError.value = normalized.message
   }
 }
 
+async function loadFilterOptions(): Promise<void> {
+  await Promise.all([loadChildren(), loadAlbums()])
+}
+
+let photosRequestId = 0
+
 async function loadPhotos(): Promise<void> {
+  const requestId = ++photosRequestId
   isLoading.value = true
   pageError.value = ''
 
@@ -110,15 +122,21 @@ async function loadPhotos(): Promise<void> {
         per_page: pageSize,
       },
     })
+    if (requestId !== photosRequestId) return
+
     photos.value = response.data
     total.value = response.meta.total
     currentPage.value = response.meta.current_page
   } catch (error) {
+    if (requestId !== photosRequestId) return
+
     const normalized = normalizeError(error)
     if (normalized.status === 401) return await unauthorized()
     pageError.value = normalized.message
   } finally {
-    isLoading.value = false
+    if (requestId === photosRequestId) {
+      isLoading.value = false
+    }
   }
 }
 
@@ -132,8 +150,18 @@ function buildQuery(): Record<string, string | undefined> {
   }
 }
 
+let lastChildId = filters.child_id
+
+async function syncAlbumsForChildChange(): Promise<void> {
+  if (filters.child_id === lastChildId) return
+  lastChildId = filters.child_id
+  filters.album_id = 'all'
+  await loadAlbums()
+}
+
 async function applyFilters(): Promise<void> {
   currentPage.value = 1
+  await syncAlbumsForChildChange()
   await router.push({ query: buildQuery() })
 }
 
@@ -162,25 +190,21 @@ function formatPrice(price: number | null): string {
 
 watch(
   () => route.query,
-  (query) => {
-    const previousChildId = filters.child_id
+  async (query) => {
     filters.child_id = queryValue(query.child_id) || 'all'
     filters.album_id = queryValue(query.album_id) || 'all'
     filters.event_date_from = queryValue(query.event_date_from)
     filters.event_date_to = queryValue(query.event_date_to)
     currentPage.value = Number(query.page) > 0 ? Number(query.page) : 1
 
-    if (filters.child_id !== previousChildId) {
-      void loadAlbums()
-    }
-
+    await syncAlbumsForChildChange()
     void loadPhotos()
   },
   { deep: true },
 )
 
 onMounted(async () => {
-  await Promise.all([loadChildren(), loadAlbums()])
+  await loadFilterOptions()
   await loadPhotos()
 })
 </script>
@@ -198,6 +222,12 @@ onMounted(async () => {
           <p class="text-sm text-slate-600">条件を絞り込んで、閲覧可能な写真を確認できます。</p>
         </div>
       </header>
+
+      <UAlert v-if="filterError" color="error" variant="soft" :title="filterError">
+        <template #actions>
+          <UButton color="error" variant="ghost" size="sm" @click="loadFilterOptions">再読み込み</UButton>
+        </template>
+      </UAlert>
 
       <UAlert v-if="pageError" color="error" variant="soft" :title="pageError">
         <template #actions>
