@@ -7,8 +7,18 @@ type GuardianLoginResponse = {
   guardian?: GuardianUser
 }
 
+export type GuardianLinkedChild = {
+  child_id: string
+  child_name: string
+  class_name: string
+  kindergarten_id: string
+  kindergarten_name: string
+  label: string | null
+  linked_at: string
+}
+
 type GuardianChildrenResponse = {
-  data: Array<Record<string, unknown>>
+  data: GuardianLinkedChild[]
 }
 
 type GuardianLogoutResponse = {

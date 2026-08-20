@@ -1,23 +1,15 @@
 <script setup lang="ts">
+import type { GuardianLinkedChild } from '~/composables/useGuardianAuth'
+
 definePageMeta({
   middleware: ['guardian-auth'],
 })
-
-type LinkedChild = {
-  child_id: string
-  child_name: string
-  class_name: string
-  kindergarten_id: string
-  kindergarten_name: string
-  label: string | null
-  linked_at: string
-}
 
 const authStore = useAuthStore()
 const { logout, fetchChildren } = useGuardianAuth()
 const { normalizeError } = useApiError()
 
-const children = ref<LinkedChild[]>([])
+const children = ref<GuardianLinkedChild[]>([])
 const isLoading = ref(true)
 const isLoggingOut = ref(false)
 const errorMessage = ref('')
@@ -33,7 +25,7 @@ async function loadChildren(): Promise<void> {
 
   try {
     const response = await fetchChildren()
-    children.value = response.data as LinkedChild[]
+    children.value = response.data
   } catch (error) {
     const normalized = normalizeError(error)
 
@@ -54,11 +46,11 @@ async function handleLogout(): Promise<void> {
 
   try {
     await logout()
-    await navigateTo('/guardian/login')
   } catch (error) {
     errorMessage.value = normalizeError(error).message
   } finally {
     isLoggingOut.value = false
+    await navigateTo('/guardian/login')
   }
 }
 
@@ -93,7 +85,7 @@ onMounted(loadChildren)
           <div v-for="index in 2" :key="index" class="h-32 animate-pulse rounded-lg bg-slate-200" />
         </div>
 
-        <UCard v-else-if="!children.length" class="border border-slate-200 shadow-sm">
+        <UCard v-else-if="!children.length && !errorMessage" class="border border-slate-200 shadow-sm">
           <div class="py-10 text-center">
             <UIcon name="i-lucide-users-round" class="mx-auto size-8 text-slate-400" />
             <p class="mt-3 font-medium text-slate-700">紐づいている園児はいません。</p>
@@ -101,7 +93,7 @@ onMounted(loadChildren)
           </div>
         </UCard>
 
-        <div v-else class="grid gap-4 sm:grid-cols-2">
+        <div v-else-if="children.length" class="grid gap-4 sm:grid-cols-2">
           <UCard v-for="child in children" :key="child.child_id" class="border border-slate-200 shadow-sm">
             <div class="flex items-start justify-between gap-3">
               <div>
