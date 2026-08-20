@@ -8,6 +8,7 @@ type ApiFetchOptions = {
   query?: Record<string, string | number | boolean | undefined>
   headers?: HeadersInit
   skipAuthRetry?: boolean
+  credentials?: 'include' | 'omit'
 }
 
 declare module '#app' {

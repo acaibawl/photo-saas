@@ -9,7 +9,7 @@ export type StaffUser = {
 }
 
 export type GuardianUser = {
-  id: number
+  id: string
   name: string
   email: string
 }

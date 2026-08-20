@@ -6,7 +6,7 @@
 
 ## ルート
 
-- `GET /invite/:token`
+- `GET /invitations/:token`
 
 ## 使用API
 
