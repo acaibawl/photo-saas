@@ -8,6 +8,7 @@ type ApiFetchOptions = {
   query?: Record<string, string | number | boolean | undefined>
   headers?: HeadersInit
   skipAuthRetry?: boolean
+  credentials?: 'include' | 'omit'
 }
 
 function resolveRealm(path: string): AuthRealm | null {
@@ -129,7 +130,8 @@ export default defineNuxtPlugin(() => {
   const api = async <T>(path: string, options: ApiFetchOptions = {}): Promise<T> => {
     const headers = applyAuthHeader(path, options.headers)
     // login/refresh は backend が Set-Cookie する refresh_token を保存/送信するため credentials が必要
-    const needsCookieCredentials = isRefreshPath(path) || isLoginPath(path)
+    // 呼び出し元が明示した場合(例: 招待受諾でrefresh_token Cookieを受け取る場合)はそちらを優先する
+    const needsCookieCredentials = options.credentials === 'include' || isRefreshPath(path) || isLoginPath(path)
 
     try {
       return await $fetch<T>(path, {

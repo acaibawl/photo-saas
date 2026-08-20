@@ -20,7 +20,7 @@ type AcceptRegistrationResponse = {
   token_type: string
   expires_in: number
   guardian?: {
-    id: number
+    id: string
     name: string
     email: string
   }
@@ -157,6 +157,7 @@ const submitRegister = handleSubmit(async (values) => {
         password: values.password,
       },
       skipAuthRetry: true,
+      credentials: 'include',
     })
 
     authStore.setGuardianAccessToken(response.access_token)

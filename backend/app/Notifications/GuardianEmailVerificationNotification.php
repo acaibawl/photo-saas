@@ -15,7 +15,7 @@ final class GuardianEmailVerificationNotification extends BaseVerifyEmailNotific
      * 直リンクになってしまうため、署名・有効期限のクエリだけを引き継いでフロントエンドの
      * 確認画面URLへ差し替える。
      */
-    protected function verificationUrl($notifiable)
+    protected function verificationUrl(mixed $notifiable): string
     {
         $backendUrl = parent::verificationUrl($notifiable);
 

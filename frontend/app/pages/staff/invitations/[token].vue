@@ -134,6 +134,7 @@ const submit = handleSubmit(async (values) => {
         password_confirmation: values.password_confirmation,
       },
       skipAuthRetry: true,
+      credentials: 'include',
     })
 
     authStore.setStaffAccessToken(response.access_token)
