@@ -54,6 +54,28 @@ async function syncOrder(targetOrderId: string): Promise<GuardianOrder> {
   })
 }
 
+async function cancelOrder(targetOrderId: string): Promise<void> {
+  isChecking.value = true
+  pageError.value = ''
+
+  try {
+    const order = await $api<GuardianOrder>(`/guardian/orders/${targetOrderId}/cancel`, {
+      method: 'POST',
+    })
+    orderStatus.value = order.status
+  } catch (error) {
+    const normalized = normalizeError(error)
+    if (normalized.status === 401) {
+      await unauthorized()
+      return
+    }
+
+    pageError.value = normalized.message
+  } finally {
+    isChecking.value = false
+  }
+}
+
 async function pollOrderStatus(): Promise<void> {
   const targetOrderId = orderId.value
   if (!targetOrderId || isDisposed) return
@@ -71,7 +93,7 @@ async function pollOrderStatus(): Promise<void> {
 
         orderStatus.value = order.status
 
-        if (orderStatus.value === 'paid') return
+        if (orderStatus.value === 'paid' || orderStatus.value === 'failed') return
       } catch (error) {
         if (isDisposed) return
 
@@ -109,8 +131,13 @@ onScopeDispose(() => {
 })
 
 onMounted(() => {
+  const targetOrderId = orderId.value
+  if (!targetOrderId) return
+
   if (status.value === 'success') {
     void pollOrderStatus()
+  } else {
+    void cancelOrder(targetOrderId)
   }
 })
 </script>
@@ -174,6 +201,8 @@ onMounted(() => {
             title="購入をキャンセルしました"
             description="決済は完了していません。引き続き写真をご覧いただけます。"
           />
+
+          <UAlert v-if="pageError" color="error" variant="soft" :title="pageError" />
 
           <UButton class="w-full justify-center" icon="i-lucide-arrow-left" to="/guardian/photos">
             写真一覧に戻る
