@@ -5,10 +5,26 @@ namespace App\Notifications;
 use Illuminate\Auth\Notifications\VerifyEmail as BaseVerifyEmailNotification;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Notifications\Messages\MailMessage;
 
 final class GuardianEmailVerificationNotification extends BaseVerifyEmailNotification implements ShouldQueue
 {
     use Queueable;
+
+    /**
+     * @return \Illuminate\Notifications\Messages\MailMessage
+     */
+    public function toMail($notifiable)
+    {
+        $verificationUrl = $this->verificationUrl($notifiable);
+
+        return (new MailMessage)
+            ->subject('メールアドレスの確認')
+            ->action('メールアドレスを確認する', $verificationUrl)
+            ->markdown('emails.guardian.email-verification', [
+                'verificationUrl' => $verificationUrl,
+            ]);
+    }
 
     /**
      * バックエンドの署名付き検証URLをそのままメールに載せると、フロントエンドを経由しない
