@@ -28,13 +28,16 @@ final class StaffInvitationNotification extends Notification implements ShouldQu
 
     public function toMail(object $notifiable): MailMessage
     {
-        // TODO: あとでbladeテンプレートに置き換える
+        $invitationUrl = rtrim((string) config('app.frontend_url'), '/').'/staff/invitations/'.$this->rawToken;
+
         return (new MailMessage)
             ->subject("【{$this->kindergartenName}】スタッフ招待のお知らせ")
-            ->line("{$this->invitation->name} 様")
-            ->line("「{$this->kindergartenName}」にスタッフとして招待されました。")
-            ->line('以下の招待トークンを初回設定画面で入力してください。')
-            ->line($this->rawToken)
-            ->line('有効期限: '.$this->invitation->expires_at->toRfc3339String());
+            ->action('招待を受諾して初回設定を行う', $invitationUrl)
+            ->markdown('emails.staff.invitation', [
+                'invitedName' => $this->invitation->name,
+                'kindergartenName' => $this->kindergartenName,
+                'invitationUrl' => $invitationUrl,
+                'expiresAt' => $this->invitation->expires_at,
+            ]);
     }
 }

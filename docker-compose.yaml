@@ -17,6 +17,17 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      mailpit:
+        condition: service_healthy
+    networks:
+      - photo-saas-net
+
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: photo-saas-mailpit
+    ports:
+      - "8025:8025"
+      - "1025:1025"
     networks:
       - photo-saas-net
 
