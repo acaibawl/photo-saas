@@ -448,7 +448,7 @@ final class GuardianPurchaseService
         ];
 
         $requestId = $response->header('Request-Id');
-        if (is_string($requestId) && trim($requestId) !== '') {
+        if (trim($requestId) !== '') {
             $context['request_id'] = $requestId;
         }
 
