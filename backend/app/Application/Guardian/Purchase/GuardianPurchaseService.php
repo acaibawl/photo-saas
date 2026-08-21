@@ -17,6 +17,7 @@ use App\Models\Photo;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Filesystem\FilesystemAdapter;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -316,16 +317,7 @@ final class GuardianPurchaseService
             ->get('https://api.stripe.com/v1/checkout/sessions/'.rawurlencode($checkoutSessionId));
 
         if ($response->failed()) {
-            $responseBody = $response->json() ?? [];
-            $errorCode = data_get($responseBody, 'error.code');
-            $errorCodeText = is_string($errorCode) && trim($errorCode) !== '' ? $errorCode : 'unknown';
-
-            Log::error('Stripe API request failed', [
-                'path' => '/v1/checkout/sessions/'.$checkoutSessionId,
-                'status' => $response->status(),
-                'error_code' => $errorCodeText,
-                'response_body' => $responseBody,
-            ]);
+            Log::error('Stripe API request failed', $this->stripeFailureLogContext($response, '/v1/checkout/sessions/'.$checkoutSessionId));
 
             throw new RuntimeException('Stripe checkout session retrieval failed');
         }
@@ -421,16 +413,7 @@ final class GuardianPurchaseService
             ]);
 
         if ($response->failed()) {
-            $responseBody = $response->json() ?? [];
-            $errorCode = data_get($responseBody, 'error.code');
-            $errorCodeText = is_string($errorCode) && trim($errorCode) !== '' ? $errorCode : 'unknown';
-
-            Log::error('Stripe API request failed', [
-                'path' => '/v1/checkout/sessions',
-                'status' => $response->status(),
-                'error_code' => $errorCodeText,
-                'response_body' => $responseBody,
-            ]);
+            Log::error('Stripe API request failed', $this->stripeFailureLogContext($response, '/v1/checkout/sessions'));
 
             throw new RuntimeException('Stripe checkout session creation failed');
         }
@@ -447,5 +430,28 @@ final class GuardianPurchaseService
             'id' => $checkoutSessionId,
             'url' => $checkoutUrl,
         ];
+    }
+
+    /**
+     * @return array{path: string, status: int, error_code: string, request_id?: string}
+     */
+    private function stripeFailureLogContext(Response $response, string $path): array
+    {
+        $responseBody = $response->json() ?? [];
+        $errorCode = data_get($responseBody, 'error.code');
+        $errorCodeText = is_string($errorCode) && trim($errorCode) !== '' ? $errorCode : 'unknown';
+
+        $context = [
+            'path' => $path,
+            'status' => $response->status(),
+            'error_code' => $errorCodeText,
+        ];
+
+        $requestId = $response->header('Request-Id');
+        if (is_string($requestId) && trim($requestId) !== '') {
+            $context['request_id'] = $requestId;
+        }
+
+        return $context;
     }
 }

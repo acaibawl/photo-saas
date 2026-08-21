@@ -22,9 +22,25 @@ const hasOrderId = computed(() => orderId.value !== null)
 const isChecking = ref(false)
 const orderStatus = ref<GuardianOrderStatus | null>(null)
 const pageError = ref('')
+let isDisposed = false
+let sleepTimeout: ReturnType<typeof setTimeout> | null = null
+let resolveSleep: (() => void) | null = null
 
 function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms))
+  if (isDisposed) return Promise.resolve()
+
+  return new Promise((resolve) => {
+    resolveSleep = resolve
+    sleepTimeout = setTimeout(() => {
+      sleepTimeout = null
+      resolveSleep = null
+      resolve()
+    }, ms)
+  })
+}
+
+function isRetryableSyncError(statusCode: number | null): boolean {
+  return statusCode === null || [502, 503, 504].includes(statusCode)
 }
 
 async function unauthorized(): Promise<void> {
@@ -39,30 +55,58 @@ async function syncOrder(targetOrderId: string): Promise<GuardianOrder> {
 }
 
 async function pollOrderStatus(): Promise<void> {
-  if (!orderId.value) return
+  const targetOrderId = orderId.value
+  if (!targetOrderId || isDisposed) return
 
   isChecking.value = true
   pageError.value = ''
 
   try {
     for (let attempt = 0; attempt < MAX_POLL_ATTEMPTS; attempt += 1) {
-      const order = await syncOrder(orderId.value)
-      orderStatus.value = order.status
+      if (isDisposed) return
 
-      if (orderStatus.value === 'paid') return
+      try {
+        const order = await syncOrder(targetOrderId)
+        if (isDisposed) return
+
+        orderStatus.value = order.status
+
+        if (orderStatus.value === 'paid') return
+      } catch (error) {
+        if (isDisposed) return
+
+        const normalized = normalizeError(error)
+        if (normalized.status === 401) return await unauthorized()
+
+        if (!isRetryableSyncError(normalized.status)) {
+          pageError.value = normalized.message
+          return
+        }
+      }
 
       if (attempt < MAX_POLL_ATTEMPTS - 1) {
+        if (isDisposed) return
         await sleep(POLL_INTERVAL_MS)
       }
     }
-  } catch (error) {
-    const normalized = normalizeError(error)
-    if (normalized.status === 401) return await unauthorized()
-    pageError.value = normalized.message
   } finally {
-    isChecking.value = false
+    if (!isDisposed) {
+      isChecking.value = false
+    }
   }
 }
+
+onScopeDispose(() => {
+  isDisposed = true
+
+  if (sleepTimeout !== null) {
+    clearTimeout(sleepTimeout)
+    sleepTimeout = null
+  }
+
+  resolveSleep?.()
+  resolveSleep = null
+})
 
 onMounted(() => {
   if (status.value === 'success') {
