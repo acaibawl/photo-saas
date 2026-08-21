@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { isNavigationFailure, NavigationFailureType } from 'vue-router'
+import type { GuardianPurchasedPhoto, GuardianPurchasedPhotoPageResponse } from '~/types/guardian'
+
 definePageMeta({
   middleware: ['guardian-auth'],
 })
@@ -7,23 +10,6 @@ type GuardianPhotoAlbum = {
   album_id: string
   title: string
   event_date: string
-}
-
-type PurchasedPhoto = {
-  photo_id: string
-  album_id: string | null
-  downloadable: boolean
-  purchased_at: string | null
-  event_date: string | null
-  preview_url: string | null
-}
-
-type PurchasedPhotoPageResponse = {
-  data: PurchasedPhoto[]
-  meta: {
-    current_page: number
-    total: number
-  }
 }
 
 const PER_PAGE = 20
@@ -39,7 +25,7 @@ function queryValue(value: unknown): string {
 }
 
 const albums = ref<GuardianPhotoAlbum[]>([])
-const photos = ref<PurchasedPhoto[]>([])
+const photos = ref<GuardianPurchasedPhoto[]>([])
 const total = ref(0)
 const currentPage = ref(Number(route.query.page) > 0 ? Number(route.query.page) : 1)
 const isLoading = ref(true)
@@ -87,7 +73,7 @@ async function loadPhotos(): Promise<void> {
   pageError.value = ''
 
   try {
-    const response = await $api<PurchasedPhotoPageResponse>('/guardian/purchased-photos', {
+    const response = await $api<GuardianPurchasedPhotoPageResponse>('/guardian/purchased-photos', {
       query: {
         album_id: filters.album_id === 'all' ? undefined : filters.album_id,
         event_date_from: filters.event_date_from || undefined,
@@ -123,17 +109,25 @@ function buildQuery(): Record<string, string | undefined> {
   }
 }
 
+async function pushQueryOrReload(): Promise<void> {
+  const failure = await router.push({ query: buildQuery() })
+
+  if (isNavigationFailure(failure, NavigationFailureType.duplicated)) {
+    void loadPhotos()
+  }
+}
+
 async function applyFilters(): Promise<void> {
   currentPage.value = 1
-  await router.push({ query: buildQuery() })
+  await pushQueryOrReload()
 }
 
 async function goToPage(page: number): Promise<void> {
   currentPage.value = page
-  await router.push({ query: buildQuery() })
+  await pushQueryOrReload()
 }
 
-async function refreshPreview(photo: PurchasedPhoto): Promise<void> {
+async function refreshPreview(photo: GuardianPurchasedPhoto): Promise<void> {
   if (previewRetriedPhotoIds.has(photo.photo_id)) return
   previewRetriedPhotoIds.add(photo.photo_id)
 
@@ -147,7 +141,7 @@ async function refreshPreview(photo: PurchasedPhoto): Promise<void> {
   }
 }
 
-async function download(photo: PurchasedPhoto): Promise<void> {
+async function download(photo: GuardianPurchasedPhoto): Promise<void> {
   downloadError.value = ''
   downloadingPhotoId.value = photo.photo_id
 

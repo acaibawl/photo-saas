@@ -1,36 +1,14 @@
 <script setup lang="ts">
+import type { GuardianOrder, GuardianOrderPageResponse, GuardianOrderStatus } from '~/types/guardian'
+
 definePageMeta({
   middleware: ['guardian-auth'],
 })
 
-type OrderStatus = 'pending' | 'paid' | 'failed' | 'refunded'
-
-type OrderItem = {
-  order_item_id: string
-  photo_id: string
-  price: number
-}
-
-type Order = {
-  order_id: string
-  status: OrderStatus
-  total_amount: number
-  created_at: string | null
-  items: OrderItem[]
-}
-
-type OrderPageResponse = {
-  data: Order[]
-  meta: {
-    current_page: number
-    total: number
-  }
-}
-
 const PER_PAGE = 20
 
 const statusOptions = [
-  { label: 'すべて', value: '' },
+  { label: 'すべて', value: 'all' },
   { label: '保留中', value: 'pending' },
   { label: '支払い済み', value: 'paid' },
   { label: '失敗', value: 'failed' },
@@ -41,8 +19,8 @@ const { $api } = useNuxtApp()
 const { normalizeError } = useApiError()
 const { logout } = useGuardianAuth()
 
-const orders = ref<Order[]>([])
-const filters = reactive({ status: '' })
+const orders = ref<GuardianOrder[]>([])
+const filters = reactive({ status: 'all' })
 const currentPage = ref(1)
 const total = ref(0)
 const isLoading = ref(true)
@@ -50,11 +28,11 @@ const pageError = ref('')
 
 const hasPagination = computed(() => total.value > PER_PAGE)
 
-function statusLabel(status: OrderStatus): string {
+function statusLabel(status: GuardianOrderStatus): string {
   return statusOptions.find(option => option.value === status)?.label ?? status
 }
 
-function statusColor(status: OrderStatus): 'success' | 'error' | 'warning' | 'neutral' {
+function statusColor(status: GuardianOrderStatus): 'success' | 'error' | 'warning' | 'neutral' {
   if (status === 'paid') return 'success'
   if (status === 'failed') return 'error'
   if (status === 'refunded') return 'neutral'
@@ -79,9 +57,9 @@ async function loadOrders(): Promise<void> {
   pageError.value = ''
 
   try {
-    const response = await $api<OrderPageResponse>('/guardian/orders', {
+    const response = await $api<GuardianOrderPageResponse>('/guardian/orders', {
       query: {
-        status: filters.status || undefined,
+        status: filters.status === 'all' ? undefined : filters.status,
         page: currentPage.value,
         per_page: PER_PAGE,
       },
@@ -128,7 +106,7 @@ onMounted(loadOrders)
       <UCard class="border border-slate-200 shadow-sm">
         <form class="grid gap-4 md:grid-cols-[1fr_auto] md:items-end" @submit.prevent="applyFilters">
           <UFormField label="ステータス">
-            <USelect v-model="filters.status" :items="statusOptions.filter((option) => option.value)" value-key="value" placeholder="すべて" />
+            <USelect v-model="filters.status" :items="statusOptions" value-key="value" />
           </UFormField>
           <UButton type="submit" icon="i-lucide-list-filter">絞り込む</UButton>
         </form>

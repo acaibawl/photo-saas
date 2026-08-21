@@ -1,22 +1,15 @@
 <script setup lang="ts">
+import type { GuardianOrder, GuardianOrderPageResponse, GuardianOrderStatus } from '~/types/guardian'
+
 definePageMeta({
   middleware: ['guardian-auth'],
 })
 
 type CheckoutStatus = 'success' | 'cancel'
-type OrderStatus = 'pending' | 'paid' | 'failed' | 'refunded'
-
-type Order = {
-  order_id: string
-  status: OrderStatus
-}
-
-type OrderPageResponse = {
-  data: Order[]
-}
 
 const MAX_POLL_ATTEMPTS = 5
 const POLL_INTERVAL_MS = 2000
+const ORDERS_PER_PAGE = 100
 
 const { $api } = useNuxtApp()
 const { normalizeError } = useApiError()
@@ -25,9 +18,10 @@ const route = useRoute()
 
 const status = computed<CheckoutStatus>(() => (route.query.status === 'success' ? 'success' : 'cancel'))
 const orderId = computed(() => (typeof route.query.order_id === 'string' ? route.query.order_id : null))
+const hasOrderId = computed(() => orderId.value !== null)
 
 const isChecking = ref(false)
-const orderStatus = ref<OrderStatus | null>(null)
+const orderStatus = ref<GuardianOrderStatus | null>(null)
 const pageError = ref('')
 
 function sleep(ms: number): Promise<void> {
@@ -39,6 +33,22 @@ async function unauthorized(): Promise<void> {
   await navigateTo('/guardian/login')
 }
 
+async function findOrder(targetOrderId: string): Promise<GuardianOrder | null> {
+  let page = 1
+
+  for (;;) {
+    const response = await $api<GuardianOrderPageResponse>('/guardian/orders', {
+      query: { page, per_page: ORDERS_PER_PAGE },
+    })
+    const found = response.data.find(item => item.order_id === targetOrderId)
+    if (found) return found
+
+    const totalPages = Math.ceil(response.meta.total / ORDERS_PER_PAGE)
+    if (page >= totalPages) return null
+    page += 1
+  }
+}
+
 async function pollOrderStatus(): Promise<void> {
   if (!orderId.value) return
 
@@ -47,8 +57,7 @@ async function pollOrderStatus(): Promise<void> {
 
   try {
     for (let attempt = 0; attempt < MAX_POLL_ATTEMPTS; attempt += 1) {
-      const response = await $api<OrderPageResponse>('/guardian/orders')
-      const order = response.data.find(item => item.order_id === orderId.value)
+      const order = await findOrder(orderId.value)
       orderStatus.value = order?.status ?? null
 
       if (orderStatus.value === 'paid') return
@@ -97,6 +106,13 @@ onMounted(() => {
             variant="soft"
             title="購入内容を確認しています"
             description="サーバー側の反映に数秒かかる場合があります。しばらくお待ちください。"
+          />
+          <UAlert
+            v-else-if="!hasOrderId"
+            color="warning"
+            variant="soft"
+            title="注文情報を確認できませんでした"
+            description="注文履歴から購入結果をご確認ください。"
           />
           <UAlert
             v-else
