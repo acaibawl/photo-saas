@@ -12,7 +12,10 @@ use App\Http\Requests\Guardian\CreateGuardianCheckoutSessionRequest;
 use App\Http\Requests\Guardian\ListGuardianOrdersRequest;
 use App\Http\Requests\Guardian\ListPurchasedPhotosRequest;
 use App\Models\Guardian;
+use App\Models\Order;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use RuntimeException;
 
 class PurchaseController extends Controller
 {
@@ -59,22 +62,33 @@ class PurchaseController extends Controller
         );
 
         return response()->json([
-            'data' => collect($paginator->items())->map(static fn ($order): array => [
-                'order_id' => $order->id,
-                'status' => $order->status,
-                'total_amount' => $order->total_amount,
-                'created_at' => $order->created_at?->toIso8601String(),
-                'items' => $order->items->map(static fn ($item): array => [
-                    'order_item_id' => $item->id,
-                    'photo_id' => $item->photo_id,
-                    'price' => $item->price,
-                ])->values()->all(),
-            ])->values()->all(),
+            'data' => collect($paginator->items())->map(static fn (Order $order): array => self::orderResponse($order))->values()->all(),
             'meta' => [
                 'current_page' => $paginator->currentPage(),
                 'total' => $paginator->total(),
             ],
         ]);
+    }
+
+    public function syncOrder(string $orderId, Request $request, GuardianPurchaseService $service): JsonResponse
+    {
+        $guardian = $request->user('guardian');
+
+        if (! $guardian instanceof Guardian) {
+            return $this->unauthenticatedResponse();
+        }
+
+        try {
+            $order = $service->syncOrderFromStripeCheckoutSession($guardian, $orderId);
+        } catch (RuntimeException) {
+            return $this->errorResponse(502, 'CHECKOUT_SYNC_FAILED', 'Checkout sync failed');
+        }
+
+        if (! $order instanceof Order) {
+            return $this->errorResponse(404, 'ORDER_NOT_FOUND', 'Order not found');
+        }
+
+        return response()->json(self::orderResponse($order));
     }
 
     public function purchasedPhotos(ListPurchasedPhotosRequest $request, GuardianPurchaseService $service): JsonResponse
@@ -124,5 +138,20 @@ class PurchaseController extends Controller
             'message' => $message,
             'code' => $code,
         ], $status);
+    }
+
+    private static function orderResponse(Order $order): array
+    {
+        return [
+            'order_id' => $order->id,
+            'status' => $order->status,
+            'total_amount' => $order->total_amount,
+            'created_at' => $order->created_at?->toIso8601String(),
+            'items' => $order->items->map(static fn ($item): array => [
+                'order_item_id' => $item->id,
+                'photo_id' => $item->photo_id,
+                'price' => $item->price,
+            ])->values()->all(),
+        ];
     }
 }
