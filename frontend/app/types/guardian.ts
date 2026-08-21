@@ -22,6 +22,14 @@ export type GuardianOrderPageResponse = {
   }
 }
 
+export type CheckoutSessionResponse = {
+  order_id: string
+  checkout_session_id: string
+  checkout_url: string
+  total_amount: number
+  currency: string
+}
+
 export type GuardianPurchasedPhoto = {
   photo_id: string
   album_id: string | null

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { CheckoutSessionResponse } from '~/types/guardian'
+
 definePageMeta({
   middleware: ['guardian-auth'],
 })
@@ -18,14 +20,6 @@ type GuardianPhotoDetail = {
   price: number | null
   preview_url: string | null
   tagged_children: GuardianPhotoDetailChild[]
-}
-
-type CheckoutSessionResponse = {
-  order_id: string
-  checkout_session_id: string
-  checkout_url: string
-  total_amount: number
-  currency: string
 }
 
 const { $api } = useNuxtApp()

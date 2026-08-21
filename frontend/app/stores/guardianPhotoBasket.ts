@@ -26,9 +26,7 @@ export const useGuardianPhotoBasketStore = defineStore('guardian-photo-basket', 
 
     toggle(photo: GuardianPhotoBasketItem): void {
       if (this.selectedPhotosById[photo.photo_id]) {
-        const selected = { ...this.selectedPhotosById }
-        delete selected[photo.photo_id]
-        this.selectedPhotosById = selected
+        this.removePhotoIds([photo.photo_id])
 
         return
       }
@@ -40,17 +38,12 @@ export const useGuardianPhotoBasketStore = defineStore('guardian-photo-basket', 
     },
 
     removePhotoIds(photoIds: string[]): void {
-      const selected = { ...this.selectedPhotosById }
-      let changed = false
+      const removedPhotoIds = new Set(photoIds)
+      const selected = Object.fromEntries(
+        Object.entries(this.selectedPhotosById).filter(([photoId]) => !removedPhotoIds.has(photoId)),
+      )
 
-      for (const photoId of photoIds) {
-        if (selected[photoId]) {
-          delete selected[photoId]
-          changed = true
-        }
-      }
-
-      if (changed) {
+      if (Object.keys(selected).length !== Object.keys(this.selectedPhotosById).length) {
         this.selectedPhotosById = selected
       }
     },

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
 import type { GuardianLinkedChild } from '~/composables/useGuardianAuth'
+import type { CheckoutSessionResponse } from '~/types/guardian'
 
 definePageMeta({
   middleware: ['guardian-auth'],
@@ -28,14 +29,6 @@ type GuardianPhotoPageResponse = {
     current_page: number
     total: number
   }
-}
-
-type CheckoutSessionResponse = {
-  order_id: string
-  checkout_session_id: string
-  checkout_url: string
-  total_amount: number
-  currency: string
 }
 
 const pageSize = 20
@@ -235,6 +228,7 @@ function clearSelection(): void {
 }
 
 async function purchaseSelectedPhotos(): Promise<void> {
+  if (isPurchasing.value) return
   if (!selectedPhotoCount.value) return
 
   purchaseError.value = ''
@@ -445,7 +439,7 @@ onMounted(async () => {
           <UButton
             icon="i-lucide-shopping-cart"
             :loading="isPurchasing"
-            :disabled="!selectedPhotoCount"
+            :disabled="isPurchasing || !selectedPhotoCount"
             @click="purchaseSelectedPhotos"
           >
             まとめて購入

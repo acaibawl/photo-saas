@@ -280,6 +280,92 @@ class GuardianPurchaseDownloadTest extends TestCase
         });
     }
 
+    public function test_checkout_session_rejects_mixed_visible_and_invisible_photos_without_creating_order(): void
+    {
+        Http::fake([
+            'https://api.stripe.com/v1/checkout/sessions' => Http::response([
+                'id' => 'cs_should_not_be_created',
+                'url' => 'https://checkout.stripe.com/pay/cs_should_not_be_created',
+            ], 200),
+        ]);
+
+        $response = $this->withHeaders($this->guardianAuthHeaders())
+            ->postJson('/guardian/purchases/checkout-session', [
+                'photo_ids' => [$this->visiblePhoto->id, $this->hiddenPhoto->id],
+                'checkout_amount' => 2800,
+                'success_url' => 'https://example.com/success',
+                'cancel_url' => 'https://example.com/cancel',
+            ]);
+
+        $response->assertStatus(403)
+            ->assertJsonPath('code', 'PHOTO_PURCHASE_NOT_ALLOWED');
+
+        $this->assertDatabaseCount('orders', 0);
+        $this->assertDatabaseCount('order_items', 0);
+        Http::assertNothingSent();
+    }
+
+    public function test_checkout_session_rejects_mixed_visible_and_purchased_photos_without_creating_order(): void
+    {
+        Http::fake([
+            'https://api.stripe.com/v1/checkout/sessions' => Http::response([
+                'id' => 'cs_should_not_be_created',
+                'url' => 'https://checkout.stripe.com/pay/cs_should_not_be_created',
+            ], 200),
+        ]);
+
+        $purchasedPhoto = Photo::create([
+            'kindergarten_id' => $this->kindergarten->id,
+            'album_id' => $this->album->id,
+            'storage_path' => 'photos/originals/purchased-visible.jpg',
+            'preview_path' => 'photos/previews/purchased-visible.jpg',
+            'price' => 1400,
+            'file_key' => 'purchased-visible-photo',
+            'preview_status' => 'ready',
+            'uploaded_by_staff_id' => $this->staff->id,
+        ]);
+        $purchasedPhoto->taggedChildren()->sync([$this->linkedChild->id]);
+
+        $paidOrder = Order::create([
+            'guardian_id' => $this->guardian->id,
+            'kindergarten_id' => $this->kindergarten->id,
+            'status' => 'paid',
+            'total_amount' => 1400,
+            'platform_fee_amount' => 300,
+        ]);
+        $paidOrderItem = OrderItem::create([
+            'order_id' => $paidOrder->id,
+            'photo_id' => $purchasedPhoto->id,
+            'price' => 1400,
+        ]);
+        Entitlement::create([
+            'order_item_id' => $paidOrderItem->id,
+            'guardian_id' => $this->guardian->id,
+            'photo_id' => $purchasedPhoto->id,
+            'granted_at' => now(),
+        ]);
+
+        $response = $this->withHeaders($this->guardianAuthHeaders())
+            ->postJson('/guardian/purchases/checkout-session', [
+                'photo_ids' => [$this->visiblePhoto->id, $purchasedPhoto->id],
+                'checkout_amount' => 2600,
+                'success_url' => 'https://example.com/success',
+                'cancel_url' => 'https://example.com/cancel',
+            ]);
+
+        $response->assertStatus(409)
+            ->assertJsonPath('code', 'ORDER_ALREADY_PAID_OR_CLOSED');
+
+        $this->assertDatabaseMissing('orders', [
+            'guardian_id' => $this->guardian->id,
+            'status' => 'pending',
+        ]);
+        $this->assertDatabaseMissing('order_items', [
+            'photo_id' => $this->visiblePhoto->id,
+        ]);
+        Http::assertNothingSent();
+    }
+
     public function test_platform_fee_uses_rate_when_within_min_max_bounds(): void
     {
         config()->set('purchase.platform_fee_rate', 0.1);
