@@ -21,11 +21,15 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Uri;
 use RuntimeException;
 
 final class GuardianPurchaseService
 {
-    public function __construct(private readonly GuardianPhotoService $photoService) {}
+    public function __construct(
+        private readonly GuardianPhotoService $photoService,
+        private readonly OrderFulfillmentService $orderFulfillmentService,
+    ) {}
 
     /**
      * @param  array<int, string>  $photoIds
@@ -129,8 +133,8 @@ final class GuardianPurchaseService
                 order: $order,
                 kindergarten: $kindergarten,
                 photos: $photos,
-                successUrl: $successUrl,
-                cancelUrl: $cancelUrl,
+                successUrl: $this->withCheckoutOrderId($successUrl, $order->id),
+                cancelUrl: $this->withCheckoutOrderId($cancelUrl, $order->id),
                 platformFeeAmount: $platformFeeAmount,
             );
 
@@ -168,6 +172,42 @@ final class GuardianPurchaseService
         }
 
         return $query->paginate($perPage, ['*'], 'page', $page);
+    }
+
+    public function syncOrderFromStripeCheckoutSession(Guardian $guardian, string $orderId): ?Order
+    {
+        $order = Order::query()
+            ->with(['items.photo.album'])
+            ->where('guardian_id', $guardian->id)
+            ->whereKey($orderId)
+            ->first();
+
+        if (! $order instanceof Order) {
+            return null;
+        }
+
+        if ($order->status !== 'pending' || ! is_string($order->stripe_checkout_session_id) || trim($order->stripe_checkout_session_id) === '') {
+            return $order;
+        }
+
+        $checkoutSession = $this->retrieveStripeCheckoutSession($order->stripe_checkout_session_id);
+        $checkoutOrderId = data_get($checkoutSession, 'client_reference_id');
+        $paymentStatus = data_get($checkoutSession, 'payment_status');
+
+        if ($checkoutOrderId !== $order->id || $paymentStatus !== 'paid') {
+            return $order;
+        }
+
+        $this->orderFulfillmentService->fulfillPaidCheckoutSession(
+            $order->id,
+            data_get($checkoutSession, 'id'),
+            data_get($checkoutSession, 'payment_intent'),
+        );
+
+        return Order::query()
+            ->with(['items.photo.album'])
+            ->whereKey($order->id)
+            ->first();
     }
 
     public function listPurchasedPhotos(
@@ -255,6 +295,42 @@ final class GuardianPurchaseService
             ->whereKey($order->id)
             ->where('status', 'pending')
             ->update(['status' => 'failed']);
+    }
+
+    private function withCheckoutOrderId(string $url, string $orderId): string
+    {
+        return Uri::of($url)->withQuery(['order_id' => $orderId])->value();
+    }
+
+    private function retrieveStripeCheckoutSession(string $checkoutSessionId): array
+    {
+        $secret = config('services.stripe.secret');
+
+        if (! is_string($secret) || trim($secret) === '') {
+            throw new RuntimeException('Stripe secret is not configured');
+        }
+
+        $response = Http::withToken($secret)
+            ->connectTimeout(5)
+            ->timeout(30)
+            ->get('https://api.stripe.com/v1/checkout/sessions/'.rawurlencode($checkoutSessionId));
+
+        if ($response->failed()) {
+            $responseBody = $response->json() ?? [];
+            $errorCode = data_get($responseBody, 'error.code');
+            $errorCodeText = is_string($errorCode) && trim($errorCode) !== '' ? $errorCode : 'unknown';
+
+            Log::error('Stripe API request failed', [
+                'path' => '/v1/checkout/sessions/'.$checkoutSessionId,
+                'status' => $response->status(),
+                'error_code' => $errorCodeText,
+                'response_body' => $responseBody,
+            ]);
+
+            throw new RuntimeException('Stripe checkout session retrieval failed');
+        }
+
+        return $response->json() ?? [];
     }
 
     /**

@@ -156,8 +156,8 @@ class GuardianPurchaseDownloadTest extends TestCase
             ->postJson('/guardian/purchases/checkout-session', [
                 'photo_ids' => [$this->visiblePhoto->id],
                 'checkout_amount' => 1200,
-                'success_url' => 'https://example.com/success',
-                'cancel_url' => 'https://example.com/cancel',
+                'success_url' => 'https://example.com/success?status=success',
+                'cancel_url' => 'https://example.com/cancel?status=cancel',
             ]);
 
         $checkoutResponse->assertOk()
@@ -195,11 +195,11 @@ class GuardianPurchaseDownloadTest extends TestCase
             ->assertJsonPath('data.0.items.0.photo_id', $this->visiblePhoto->id);
 
         Http::assertSentCount(1);
-        Http::assertSent(function ($request): bool {
+        Http::assertSent(function ($request) use ($orderId): bool {
             return $request->method() === 'POST'
                 && $request->url() === 'https://api.stripe.com/v1/checkout/sessions'
-                && $request['success_url'] === 'https://example.com/success'
-                && $request['cancel_url'] === 'https://example.com/cancel'
+                && $request['success_url'] === 'https://example.com/success?status=success&order_id='.$orderId
+                && $request['cancel_url'] === 'https://example.com/cancel?status=cancel&order_id='.$orderId
                 && $request['client_reference_id'] !== ''
                 && $request['payment_intent_data']['application_fee_amount'] === 300
                 && $request['line_items'][0]['price_data']['unit_amount'] === 1200;
@@ -617,6 +617,56 @@ class GuardianPurchaseDownloadTest extends TestCase
         ]);
 
         $this->assertSame(1, Entitlement::query()->where('order_item_id', $orderItem->id)->count());
+    }
+
+    public function test_guardian_can_sync_paid_checkout_session_when_webhook_is_delayed(): void
+    {
+        $order = Order::create([
+            'guardian_id' => $this->guardian->id,
+            'kindergarten_id' => $this->kindergarten->id,
+            'status' => 'pending',
+            'total_amount' => 1200,
+            'platform_fee_amount' => 300,
+            'stripe_checkout_session_id' => 'cs_sync_paid_123',
+        ]);
+
+        $orderItem = OrderItem::create([
+            'order_id' => $order->id,
+            'photo_id' => $this->visiblePhoto->id,
+            'price' => 1200,
+        ]);
+
+        Http::fake([
+            'https://api.stripe.com/v1/checkout/sessions/cs_sync_paid_123' => Http::response([
+                'id' => 'cs_sync_paid_123',
+                'client_reference_id' => $order->id,
+                'payment_status' => 'paid',
+                'payment_intent' => 'pi_sync_123',
+            ], 200),
+        ]);
+
+        $response = $this->withHeaders($this->guardianAuthHeaders())
+            ->postJson('/guardian/orders/'.$order->id.'/sync');
+
+        $response->assertOk()
+            ->assertJsonPath('order_id', $order->id)
+            ->assertJsonPath('status', 'paid');
+
+        $this->assertDatabaseHas('orders', [
+            'id' => $order->id,
+            'status' => 'paid',
+            'stripe_checkout_session_id' => 'cs_sync_paid_123',
+            'stripe_payment_intent_id' => 'pi_sync_123',
+        ]);
+
+        $this->assertDatabaseHas('entitlements', [
+            'order_item_id' => $orderItem->id,
+            'guardian_id' => $this->guardian->id,
+            'photo_id' => $this->visiblePhoto->id,
+        ]);
+
+        Http::assertSent(fn ($request): bool => $request->method() === 'GET'
+            && $request->url() === 'https://api.stripe.com/v1/checkout/sessions/cs_sync_paid_123');
     }
 
     private function signedStripeSignature(string $payload, string $secret): string

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { GuardianOrder, GuardianOrderPageResponse, GuardianOrderStatus } from '~/types/guardian'
+import type { GuardianOrder, GuardianOrderStatus } from '~/types/guardian'
 
 definePageMeta({
   middleware: ['guardian-auth'],
@@ -9,7 +9,6 @@ type CheckoutStatus = 'success' | 'cancel'
 
 const MAX_POLL_ATTEMPTS = 5
 const POLL_INTERVAL_MS = 2000
-const ORDERS_PER_PAGE = 100
 
 const { $api } = useNuxtApp()
 const { normalizeError } = useApiError()
@@ -33,20 +32,10 @@ async function unauthorized(): Promise<void> {
   await navigateTo('/guardian/login')
 }
 
-async function findOrder(targetOrderId: string): Promise<GuardianOrder | null> {
-  let page = 1
-
-  for (;;) {
-    const response = await $api<GuardianOrderPageResponse>('/guardian/orders', {
-      query: { page, per_page: ORDERS_PER_PAGE },
-    })
-    const found = response.data.find(item => item.order_id === targetOrderId)
-    if (found) return found
-
-    const totalPages = Math.ceil(response.meta.total / ORDERS_PER_PAGE)
-    if (page >= totalPages) return null
-    page += 1
-  }
+async function syncOrder(targetOrderId: string): Promise<GuardianOrder> {
+  return await $api<GuardianOrder>(`/guardian/orders/${targetOrderId}/sync`, {
+    method: 'POST',
+  })
 }
 
 async function pollOrderStatus(): Promise<void> {
@@ -57,8 +46,8 @@ async function pollOrderStatus(): Promise<void> {
 
   try {
     for (let attempt = 0; attempt < MAX_POLL_ATTEMPTS; attempt += 1) {
-      const order = await findOrder(orderId.value)
-      orderStatus.value = order?.status ?? null
+      const order = await syncOrder(orderId.value)
+      orderStatus.value = order.status
 
       if (orderStatus.value === 'paid') return
 

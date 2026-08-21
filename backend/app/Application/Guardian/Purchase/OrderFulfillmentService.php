@@ -49,6 +49,11 @@ final class OrderFulfillmentService
             return;
         }
 
+        $this->fulfillPaidCheckoutSession($orderId, $checkoutSessionId, $paymentIntentId);
+    }
+
+    public function fulfillPaidCheckoutSession(string $orderId, mixed $checkoutSessionId, mixed $paymentIntentId): void
+    {
         DB::transaction(function () use ($orderId, $checkoutSessionId, $paymentIntentId): void {
             $order = Order::query()
                 ->with('items')
