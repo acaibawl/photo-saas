@@ -11,10 +11,7 @@ final class GuardianEmailVerificationNotification extends BaseVerifyEmailNotific
 {
     use Queueable;
 
-    /**
-     * @return \Illuminate\Notifications\Messages\MailMessage
-     */
-    public function toMail($notifiable)
+    public function toMail(mixed $notifiable): MailMessage
     {
         $verificationUrl = $this->verificationUrl($notifiable);
 
