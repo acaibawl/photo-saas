@@ -107,6 +107,19 @@ onMounted(loadChildren)
         </div>
       </section>
 
+      <section aria-label="購入・注文" class="grid gap-4 sm:grid-cols-2">
+        <NuxtLink to="/guardian/purchased-photos" class="group rounded-lg border border-slate-200 bg-white p-5 shadow-sm transition hover:border-emerald-300 hover:shadow-md">
+          <UIcon name="i-lucide-images" class="size-6 text-emerald-700" />
+          <h2 class="mt-4 text-lg font-semibold text-slate-900 group-hover:text-emerald-800">購入済み写真</h2>
+          <p class="mt-1 text-sm leading-6 text-slate-600">購入した写真の確認とダウンロードができます。</p>
+        </NuxtLink>
+        <NuxtLink to="/guardian/orders" class="group rounded-lg border border-slate-200 bg-white p-5 shadow-sm transition hover:border-emerald-300 hover:shadow-md">
+          <UIcon name="i-lucide-receipt" class="size-6 text-emerald-700" />
+          <h2 class="mt-4 text-lg font-semibold text-slate-900 group-hover:text-emerald-800">注文履歴</h2>
+          <p class="mt-1 text-sm leading-6 text-slate-600">過去の注文状態を確認できます。</p>
+        </NuxtLink>
+      </section>
+
       <UCard class="border border-slate-200 shadow-sm">
         <template #header>
           <h2 class="text-lg font-semibold text-slate-900">兄弟姉妹を追加する</h2>
