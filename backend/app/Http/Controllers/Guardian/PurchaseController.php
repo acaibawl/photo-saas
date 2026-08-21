@@ -91,6 +91,27 @@ class PurchaseController extends Controller
         return response()->json(self::orderResponse($order));
     }
 
+    public function cancelOrder(string $orderId, Request $request, GuardianPurchaseService $service): JsonResponse
+    {
+        $guardian = $request->user('guardian');
+
+        if (! $guardian instanceof Guardian) {
+            return $this->unauthenticatedResponse();
+        }
+
+        try {
+            $order = $service->cancelCheckoutSession($guardian, $orderId);
+        } catch (RuntimeException) {
+            return $this->errorResponse(502, 'CHECKOUT_CANCELLATION_FAILED', 'Checkout cancellation failed');
+        }
+
+        if (! $order instanceof Order) {
+            return $this->errorResponse(404, 'ORDER_NOT_FOUND', 'Order not found');
+        }
+
+        return response()->json(self::orderResponse($order));
+    }
+
     public function purchasedPhotos(ListPurchasedPhotosRequest $request, GuardianPurchaseService $service): JsonResponse
     {
         $guardian = $request->user('guardian');

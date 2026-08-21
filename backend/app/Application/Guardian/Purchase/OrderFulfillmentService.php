@@ -21,7 +21,7 @@ final class OrderFulfillmentService
             throw new StripeWebhookValidationException('Stripe webhook payload is invalid');
         }
 
-        if (! is_array($event) || ($event['type'] ?? null) !== 'checkout.session.completed') {
+        if (! is_array($event)) {
             return;
         }
 
@@ -33,8 +33,6 @@ final class OrderFulfillmentService
 
         $orderId = data_get($session, 'client_reference_id');
         $checkoutSessionId = data_get($session, 'id');
-        $paymentIntentId = data_get($session, 'payment_intent');
-
         if (! is_string($orderId) || trim($orderId) === '') {
             if (! is_string($checkoutSessionId) || trim($checkoutSessionId) === '') {
                 return;
@@ -49,7 +47,15 @@ final class OrderFulfillmentService
             return;
         }
 
-        $this->fulfillPaidCheckoutSession($orderId, $checkoutSessionId, $paymentIntentId);
+        if (($event['type'] ?? null) === 'checkout.session.completed') {
+            $this->fulfillPaidCheckoutSession($orderId, $checkoutSessionId, data_get($session, 'payment_intent'));
+
+            return;
+        }
+
+        if (($event['type'] ?? null) === 'checkout.session.expired') {
+            $this->markCheckoutSessionAsFailed($orderId, $checkoutSessionId);
+        }
     }
 
     public function fulfillPaidCheckoutSession(string $orderId, mixed $checkoutSessionId, mixed $paymentIntentId): void
@@ -89,6 +95,21 @@ final class OrderFulfillmentService
                     ],
                 );
             }
+        });
+    }
+
+    public function markCheckoutSessionAsFailed(string $orderId, mixed $checkoutSessionId): void
+    {
+        if (! is_string($checkoutSessionId) || trim($checkoutSessionId) === '') {
+            return;
+        }
+
+        DB::transaction(function () use ($orderId, $checkoutSessionId): void {
+            Order::query()
+                ->whereKey($orderId)
+                ->where('stripe_checkout_session_id', $checkoutSessionId)
+                ->where('status', 'pending')
+                ->update(['status' => 'failed']);
         });
     }
 

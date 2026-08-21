@@ -84,9 +84,14 @@ phpコンテナで実行
 php artisan boost:mcp
 ```
 
-## Stripe Webhookのローカル受信（Stripe CLI）
+## Stripe Webhookの設定とローカル受信（Stripe CLI）
 
-Stripe Connectのオンボーディング状況（`account.updated`）や決済完了（`checkout.session.completed`）はWebhook経由でDBに反映される。ローカルで動作確認するには [Stripe CLI](https://docs.stripe.com/stripe-cli) を使ってイベントを転送する。
+Stripe Connectのオンボーディング状況（`account.updated`）や決済状態はWebhook経由でDBに反映される。Checkout Sessionのイベントは以下のように扱う。
+
+- `checkout.session.completed`: 決済完了時に注文を `paid` にし、写真のダウンロード権利を付与する。
+- `checkout.session.expired`: 決済せずにCheckout画面を閉じるなどしてSessionが期限切れになったとき、注文を `failed` にする。
+
+Stripe Dashboardのテストモードと本番モードそれぞれで、Webhook endpointとして本番APIの `https://{APIドメイン}/public/stripe/webhook` を登録し、少なくとも `checkout.session.completed`、`checkout.session.expired`、`account.updated` を配信対象に設定する。`backend.local` はローカル専用のためDashboardから直接到達できない。ローカルで動作確認するには [Stripe CLI](https://docs.stripe.com/stripe-cli) を使ってイベントを転送する。
 
 1. Stripe CLIをインストールし、Stripeアカウントでログインする。
 
@@ -100,7 +105,9 @@ Stripe Connectのオンボーディング状況（`account.updated`）や決済�
 3. Webhookをbackendコンテナへ転送する。このコマンドは起動したままにしておく。
 
    ```bash
-   stripe listen --forward-to https://backend.local/public/stripe/webhook
+   stripe listen \
+     --events checkout.session.completed,checkout.session.expired,account.updated \
+     --forward-to https://backend.local/public/stripe/webhook
    ```
 
    起動すると `Ready! ... Your webhook signing secret is whsec_...` と表示される。この値を `backend/.env` の `STRIPE_WEBHOOK_SECRET` に設定し、設定キャッシュをクリアする。
@@ -113,9 +120,12 @@ Stripe Connectのオンボーディング状況（`account.updated`）や決済�
 
    ```bash
    stripe trigger checkout.session.completed
+   stripe trigger checkout.session.expired
    stripe trigger account.updated
    ```
 
    `stripe trigger` は架空のテスト用オブジェクトに対してイベントを発火するため、実際にアプリ内で作成した注文やConnectアカウントとはIDが一致しない。そのため、`stripe listen` 側で200が返ってもDBの状態（`orders.status`や`kindergartens.stripe_onboarding_completed_at`）が更新されないことがある。実データで確認したい場合は、アプリの購入導線やStripeダッシュボード上の実アカウント操作を通じて実イベントを発生させる。
+
+   Checkout画面からキャンセルURLへ戻った場合は、アプリがStripe Sessionを明示的に失効させるため、すぐに注文が `failed` になる。ブラウザを閉じた場合は、StripeがSessionを期限切れにして `checkout.session.expired` を送るまで注文は `pending` のままとなる。
 
 5. ルートパスに `/api` プレフィックスは付かない（`backend/bootstrap/app.php` の `apiPrefix: ''` による）。`--forward-to` のURLを `https://backend.local/api/public/stripe/webhook` のように書くと404になるので注意する。

@@ -669,6 +669,106 @@ class GuardianPurchaseDownloadTest extends TestCase
             && $request->url() === 'https://api.stripe.com/v1/checkout/sessions/cs_sync_paid_123');
     }
 
+    public function test_guardian_can_create_a_new_checkout_session_after_cancelling_checkout(): void
+    {
+        $order = Order::create([
+            'guardian_id' => $this->guardian->id,
+            'kindergarten_id' => $this->kindergarten->id,
+            'status' => 'pending',
+            'total_amount' => 1200,
+            'platform_fee_amount' => 300,
+            'stripe_checkout_session_id' => 'cs_sync_cancelled_123',
+        ]);
+
+        OrderItem::create([
+            'order_id' => $order->id,
+            'photo_id' => $this->visiblePhoto->id,
+            'price' => 1200,
+        ]);
+
+        Http::fake([
+            'https://api.stripe.com/v1/checkout/sessions/cs_sync_cancelled_123' => Http::response([
+                'id' => 'cs_sync_cancelled_123',
+                'client_reference_id' => $order->id,
+                'payment_status' => 'unpaid',
+                'status' => 'open',
+            ], 200),
+            'https://api.stripe.com/v1/checkout/sessions/cs_sync_cancelled_123/expire' => Http::response([
+                'id' => 'cs_sync_cancelled_123',
+                'status' => 'expired',
+            ], 200),
+            'https://api.stripe.com/v1/checkout/sessions' => Http::response([
+                'id' => 'cs_retry_123',
+                'url' => 'https://checkout.stripe.com/pay/cs_retry_123',
+            ], 200),
+        ]);
+
+        $cancelResponse = $this->withHeaders($this->guardianAuthHeaders())
+            ->postJson('/guardian/orders/'.$order->id.'/cancel');
+
+        $cancelResponse->assertOk()
+            ->assertJsonPath('order_id', $order->id)
+            ->assertJsonPath('status', 'failed');
+
+        $retryResponse = $this->withHeaders($this->guardianAuthHeaders())
+            ->postJson('/guardian/purchases/checkout-session', [
+                'photo_ids' => [$this->visiblePhoto->id],
+                'checkout_amount' => 1200,
+                'success_url' => 'https://example.com/success',
+                'cancel_url' => 'https://example.com/cancel',
+            ]);
+
+        $retryResponse->assertOk()
+            ->assertJsonPath('checkout_session_id', 'cs_retry_123');
+
+        $this->assertDatabaseHas('orders', [
+            'id' => $order->id,
+            'status' => 'failed',
+        ]);
+
+        Http::assertSent(fn ($request): bool => $request->method() === 'POST'
+            && $request->url() === 'https://api.stripe.com/v1/checkout/sessions/cs_sync_cancelled_123/expire'
+            && str_starts_with((string) data_get($request->header('Content-Type'), 0), 'application/x-www-form-urlencoded'));
+    }
+
+    /**
+     * @throws JsonException
+     */
+    public function test_checkout_session_expired_webhook_marks_pending_order_as_failed(): void
+    {
+        $order = Order::create([
+            'guardian_id' => $this->guardian->id,
+            'kindergarten_id' => $this->kindergarten->id,
+            'status' => 'pending',
+            'total_amount' => 1200,
+            'platform_fee_amount' => 300,
+            'stripe_checkout_session_id' => 'cs_expired_123',
+        ]);
+
+        $payload = json_encode([
+            'type' => 'checkout.session.expired',
+            'data' => [
+                'object' => [
+                    'id' => 'cs_expired_123',
+                    'client_reference_id' => $order->id,
+                ],
+            ],
+        ], JSON_THROW_ON_ERROR);
+
+        $response = $this->withHeaders([
+            'Accept' => 'application/json',
+            'Stripe-Signature' => $this->signedStripeSignature($payload, 'whsec_test_123'),
+        ])->postJson('/public/stripe/webhook', json_decode($payload, true, 512, JSON_THROW_ON_ERROR));
+
+        $response->assertOk()
+            ->assertJsonPath('received', true);
+
+        $this->assertDatabaseHas('orders', [
+            'id' => $order->id,
+            'status' => 'failed',
+        ]);
+    }
+
     private function signedStripeSignature(string $payload, string $secret): string
     {
         $timestamp = (string) time();

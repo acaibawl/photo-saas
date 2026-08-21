@@ -195,7 +195,11 @@ final class GuardianPurchaseService
         $checkoutOrderId = data_get($checkoutSession, 'client_reference_id');
         $paymentStatus = data_get($checkoutSession, 'payment_status');
 
-        if ($checkoutOrderId !== $order->id || $paymentStatus !== 'paid') {
+        if ($checkoutOrderId !== $order->id) {
+            return $order;
+        }
+
+        if ($paymentStatus !== 'paid') {
             return $order;
         }
 
@@ -204,6 +208,49 @@ final class GuardianPurchaseService
             data_get($checkoutSession, 'id'),
             data_get($checkoutSession, 'payment_intent'),
         );
+
+        return Order::query()
+            ->with(['items.photo.album'])
+            ->whereKey($order->id)
+            ->first();
+    }
+
+    public function cancelCheckoutSession(Guardian $guardian, string $orderId): ?Order
+    {
+        $order = Order::query()
+            ->with(['items.photo.album'])
+            ->where('guardian_id', $guardian->id)
+            ->whereKey($orderId)
+            ->first();
+
+        if (! $order instanceof Order) {
+            return null;
+        }
+
+        if ($order->status !== 'pending' || ! is_string($order->stripe_checkout_session_id) || trim($order->stripe_checkout_session_id) === '') {
+            return $order;
+        }
+
+        $checkoutSession = $this->retrieveStripeCheckoutSession($order->stripe_checkout_session_id);
+        if (data_get($checkoutSession, 'client_reference_id') !== $order->id) {
+            return $order;
+        }
+
+        if (data_get($checkoutSession, 'payment_status') === 'paid') {
+            $this->orderFulfillmentService->fulfillPaidCheckoutSession(
+                $order->id,
+                data_get($checkoutSession, 'id'),
+                data_get($checkoutSession, 'payment_intent'),
+            );
+        } elseif (data_get($checkoutSession, 'status') === 'open') {
+            $expiredSession = $this->expireStripeCheckoutSession($order->stripe_checkout_session_id);
+
+            if (data_get($expiredSession, 'status') === 'expired') {
+                $this->markOrderAsFailed($order);
+            }
+        } elseif (data_get($checkoutSession, 'status') === 'expired') {
+            $this->markOrderAsFailed($order);
+        }
 
         return Order::query()
             ->with(['items.photo.album'])
@@ -320,6 +367,29 @@ final class GuardianPurchaseService
             Log::error('Stripe API request failed', $this->stripeFailureLogContext($response, '/v1/checkout/sessions/'.$checkoutSessionId));
 
             throw new RuntimeException('Stripe checkout session retrieval failed');
+        }
+
+        return $response->json() ?? [];
+    }
+
+    private function expireStripeCheckoutSession(string $checkoutSessionId): array
+    {
+        $secret = config('services.stripe.secret');
+
+        if (! is_string($secret) || trim($secret) === '') {
+            throw new RuntimeException('Stripe secret is not configured');
+        }
+
+        $response = Http::asForm()
+            ->withToken($secret)
+            ->connectTimeout(5)
+            ->timeout(30)
+            ->post('https://api.stripe.com/v1/checkout/sessions/'.rawurlencode($checkoutSessionId).'/expire');
+
+        if ($response->failed()) {
+            Log::error('Stripe API request failed', $this->stripeFailureLogContext($response, '/v1/checkout/sessions/'.$checkoutSessionId.'/expire'));
+
+            throw new RuntimeException('Stripe checkout session expiration failed');
         }
 
         return $response->json() ?? [];
