@@ -67,6 +67,7 @@
 | data[].photo_id | string(ULID) |
 | data[].album_id | string(ULID) |
 | data[].price | integer |
+| data[].purchased | boolean |
 | data[].preview_url | string(url) |
 | data[].event_date | string(date) |
 | data[].tagged_child_ids | array<string(ULID)> |
@@ -76,6 +77,7 @@
 ### 認可要件
 
 - クエリ時点で `guardian_child.unlinked_at IS NULL` と `photo_child_tags` をJOINし、可視写真のみ返す。
+- `purchased` は `entitlements (guardian_id, photo_id)` の存在で判定し、購入済み写真を再購入対象に追加しないために利用する。
 - 画面側では前段の `/guardian/albums` で取得した `album_id` を使って絞り込みを行う。
 - 購入済み写真を再表示する導線には本APIを使わず、entitlement基準の `GET /guardian/purchased-photos` を使う。
 

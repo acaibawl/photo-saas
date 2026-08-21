@@ -5,6 +5,7 @@ namespace App\Application\Guardian\Photo;
 use App\Domain\Photo\Exceptions\PhotoAccessDeniedException;
 use App\Domain\Photo\Exceptions\PhotoNotFoundException;
 use App\Models\Album;
+use App\Models\Entitlement;
 use App\Models\Guardian;
 use App\Models\GuardianChild;
 use App\Models\Photo;
@@ -103,6 +104,22 @@ final class GuardianPhotoService
         return $query
             ->orderByDesc('photos.created_at')
             ->paginate($perPage, ['photos.*'], 'page', $page);
+    }
+
+    /**
+     * @param  array<int, string>  $photoIds
+     * @return Collection<int, string>
+     */
+    public function purchasedPhotoIds(Guardian $guardian, array $photoIds): Collection
+    {
+        if ($photoIds === []) {
+            return collect();
+        }
+
+        return Entitlement::query()
+            ->where('guardian_id', $guardian->id)
+            ->whereIn('photo_id', $photoIds)
+            ->pluck('photo_id');
     }
 
     public function findPhotoDetail(Guardian $guardian, string $photoId): array

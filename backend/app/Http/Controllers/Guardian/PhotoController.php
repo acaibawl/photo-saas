@@ -60,12 +60,17 @@ class PhotoController extends Controller
                 $request->integer('page', 1),
                 $request->integer('per_page', 20),
             );
+            $purchasedPhotoIds = $service->purchasedPhotoIds(
+                $guardian,
+                collect($paginator->items())->pluck('id')->all(),
+            );
 
             return response()->json([
                 'data' => array_map(fn ($photo): array => [
                     'photo_id' => $photo->id,
                     'album_id' => $photo->album_id,
                     'price' => $photo->price,
+                    'purchased' => $purchasedPhotoIds->contains($photo->id),
                     'preview_url' => $service->previewUrlFor($photo->preview_path),
                     'event_date' => $photo->album?->event_date?->toDateString(),
                     'tagged_child_ids' => $photo->taggedChildren

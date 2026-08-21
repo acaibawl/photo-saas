@@ -5,10 +5,13 @@ namespace Tests\Feature;
 use App\Models\Album;
 use App\Models\Child;
 use App\Models\ChildClass;
+use App\Models\Entitlement;
 use App\Models\Guardian;
 use App\Models\GuardianChild;
 use App\Models\Kindergarten;
 use App\Models\KindergartenStaff;
+use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\Photo;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
@@ -255,6 +258,25 @@ class GuardianPhotoViewingTest extends TestCase
 
     public function test_guardian_can_list_show_and_refresh_preview_url_for_visible_photos(): void
     {
+        $order = Order::create([
+            'guardian_id' => $this->guardian->id,
+            'kindergarten_id' => $this->kindergartenA->id,
+            'status' => 'paid',
+            'total_amount' => 1200,
+            'platform_fee_amount' => 300,
+        ]);
+        $orderItem = OrderItem::create([
+            'order_id' => $order->id,
+            'photo_id' => $this->visiblePhoto->id,
+            'price' => 1200,
+        ]);
+        Entitlement::create([
+            'order_item_id' => $orderItem->id,
+            'guardian_id' => $this->guardian->id,
+            'photo_id' => $this->visiblePhoto->id,
+            'granted_at' => now(),
+        ]);
+
         $listResponse = $this->withHeaders($this->guardianAuthHeaders())
             ->getJson('/guardian/photos?child_id='.$this->childA->id.'&album_id='.$this->albumA->id);
 
@@ -262,6 +284,10 @@ class GuardianPhotoViewingTest extends TestCase
             ->assertJsonPath('meta.total', 2)
             ->assertJsonPath('data.0.album_id', $this->albumA->id)
             ->assertJsonPath('data.0.tagged_child_ids.0', $this->childA->id);
+
+        $listedPhotos = collect($listResponse->json('data'));
+        $this->assertTrue($listedPhotos->firstWhere('photo_id', $this->visiblePhoto->id)['purchased']);
+        $this->assertFalse($listedPhotos->firstWhere('photo_id', $this->sharedAlbumPhoto->id)['purchased']);
 
         $detailResponse = $this->withHeaders($this->guardianAuthHeaders())
             ->getJson('/guardian/photos/'.$this->visiblePhoto->id);
