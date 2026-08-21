@@ -74,7 +74,7 @@ class ProcessUploadBatchJob implements ShouldQueue
                 }
 
                 $sourceContents = Storage::disk('s3')->get($sourcePath);
-                $previewContents = $this->generatePreviewContents($sourceContents, 'Photo SaaS');
+                $previewContents = $this->generatePreviewContents($sourceContents, 'SAMPLE');
 
                 if (! Storage::disk('s3')->put($previewPath, $previewContents)) {
                     throw new \RuntimeException('Failed to store preview file in S3.');
@@ -218,23 +218,46 @@ class ProcessUploadBatchJob implements ShouldQueue
 
     private function applyWatermark(\GdImage $image, string $watermarkText): void
     {
-        $font = 5;
-        $padding = 12;
         $width = imagesx($image);
         $height = imagesy($image);
-        $textWidth = imagefontwidth($font) * strlen($watermarkText);
-        $textHeight = imagefontheight($font);
-        $x = max($padding, $width - $textWidth - $padding);
-        $y = max($padding, $height - $textHeight - $padding);
 
-        $shadowColor = imagecolorallocate($image, 0, 0, 0);
-        $textColor = imagecolorallocate($image, 255, 255, 255);
+        imagealphablending($image, true);
 
-        if ($shadowColor === false || $textColor === false) {
-            throw new \RuntimeException('Failed to allocate preview watermark colors.');
+        $this->lightenImage($image, $width, $height);
+        $this->tileWatermarkText($image, $width, $height, $watermarkText);
+    }
+
+    private function lightenImage(\GdImage $image, int $width, int $height): void
+    {
+        $overlayColor = imagecolorallocatealpha($image, 255, 255, 255, 70);
+
+        if ($overlayColor === false) {
+            throw new \RuntimeException('Failed to allocate preview overlay color.');
         }
 
-        imagestring($image, $font, $x + 1, $y + 1, $watermarkText, $shadowColor);
-        imagestring($image, $font, $x, $y, $watermarkText, $textColor);
+        imagefilledrectangle($image, 0, 0, $width - 1, $height - 1, $overlayColor);
+    }
+
+    private function tileWatermarkText(\GdImage $image, int $width, int $height, string $watermarkText): void
+    {
+        $fontPath = resource_path('fonts/DejaVuSans-Bold.ttf');
+        $fontSize = max(16, (int) round(min($width, $height) / 10));
+        $angle = 30;
+
+        $textColor = imagecolorallocatealpha($image, 120, 120, 120, 45);
+
+        if ($textColor === false) {
+            throw new \RuntimeException('Failed to allocate preview watermark color.');
+        }
+
+        $stepX = (int) round($fontSize * (mb_strlen($watermarkText) + 3));
+        $stepY = (int) round($fontSize * 3.5);
+        $diagonal = (int) round(sqrt($width ** 2 + $height ** 2));
+
+        for ($y = -$diagonal; $y <= $diagonal; $y += $stepY) {
+            for ($x = -$diagonal; $x <= $diagonal; $x += $stepX) {
+                imagettftext($image, $fontSize, $angle, $x, $y, $textColor, $fontPath, $watermarkText);
+            }
+        }
     }
 }
