@@ -206,6 +206,166 @@ class GuardianPurchaseDownloadTest extends TestCase
         });
     }
 
+    public function test_guardian_can_create_checkout_session_for_multiple_photos(): void
+    {
+        config()->set('purchase.platform_fee_rate', 0.15);
+        config()->set('purchase.platform_fee_min_amount', 300);
+        config()->set('purchase.platform_fee_max_amount', 3000);
+
+        Http::fake([
+            'https://api.stripe.com/v1/checkout/sessions' => Http::response([
+                'id' => 'cs_test_bulk_123',
+                'url' => 'https://checkout.stripe.com/pay/cs_test_bulk_123',
+            ], 200),
+        ]);
+
+        $secondPhoto = Photo::create([
+            'kindergarten_id' => $this->kindergarten->id,
+            'album_id' => $this->album->id,
+            'storage_path' => 'photos/originals/second-visible.jpg',
+            'preview_path' => 'photos/previews/second-visible.jpg',
+            'price' => 1400,
+            'file_key' => 'second-visible-photo',
+            'preview_status' => 'ready',
+            'uploaded_by_staff_id' => $this->staff->id,
+        ]);
+        $secondPhoto->taggedChildren()->sync([$this->linkedChild->id]);
+
+        $checkoutResponse = $this->withHeaders($this->guardianAuthHeaders())
+            ->postJson('/guardian/purchases/checkout-session', [
+                'photo_ids' => [$this->visiblePhoto->id, $secondPhoto->id],
+                'checkout_amount' => 2600,
+                'success_url' => 'https://example.com/success',
+                'cancel_url' => 'https://example.com/cancel',
+            ]);
+
+        $checkoutResponse->assertOk()
+            ->assertJsonPath('total_amount', 2600)
+            ->assertJsonPath('checkout_session_id', 'cs_test_bulk_123');
+
+        $orderId = $checkoutResponse->json('order_id');
+        $this->assertIsString($orderId);
+
+        $this->assertDatabaseHas('orders', [
+            'id' => $orderId,
+            'guardian_id' => $this->guardian->id,
+            'kindergarten_id' => $this->kindergarten->id,
+            'status' => 'pending',
+            'total_amount' => 2600,
+            'platform_fee_amount' => 390,
+            'stripe_checkout_session_id' => 'cs_test_bulk_123',
+        ]);
+
+        $this->assertDatabaseHas('order_items', [
+            'order_id' => $orderId,
+            'photo_id' => $this->visiblePhoto->id,
+            'price' => 1200,
+        ]);
+        $this->assertDatabaseHas('order_items', [
+            'order_id' => $orderId,
+            'photo_id' => $secondPhoto->id,
+            'price' => 1400,
+        ]);
+
+        Http::assertSentCount(1);
+        Http::assertSent(function ($request) use ($orderId): bool {
+            return $request->method() === 'POST'
+                && $request->url() === 'https://api.stripe.com/v1/checkout/sessions'
+                && $request['success_url'] === 'https://example.com/success?order_id='.$orderId
+                && $request['cancel_url'] === 'https://example.com/cancel?order_id='.$orderId
+                && $request['payment_intent_data']['application_fee_amount'] === 390
+                && count($request['line_items']) === 2
+                && $request['line_items'][0]['price_data']['unit_amount'] === 1200
+                && $request['line_items'][1]['price_data']['unit_amount'] === 1400;
+        });
+    }
+
+    public function test_checkout_session_rejects_mixed_visible_and_invisible_photos_without_creating_order(): void
+    {
+        Http::fake([
+            'https://api.stripe.com/v1/checkout/sessions' => Http::response([
+                'id' => 'cs_should_not_be_created',
+                'url' => 'https://checkout.stripe.com/pay/cs_should_not_be_created',
+            ], 200),
+        ]);
+
+        $response = $this->withHeaders($this->guardianAuthHeaders())
+            ->postJson('/guardian/purchases/checkout-session', [
+                'photo_ids' => [$this->visiblePhoto->id, $this->hiddenPhoto->id],
+                'checkout_amount' => 2800,
+                'success_url' => 'https://example.com/success',
+                'cancel_url' => 'https://example.com/cancel',
+            ]);
+
+        $response->assertStatus(403)
+            ->assertJsonPath('code', 'PHOTO_PURCHASE_NOT_ALLOWED');
+
+        $this->assertDatabaseCount('orders', 0);
+        $this->assertDatabaseCount('order_items', 0);
+        Http::assertNothingSent();
+    }
+
+    public function test_checkout_session_rejects_mixed_visible_and_purchased_photos_without_creating_order(): void
+    {
+        Http::fake([
+            'https://api.stripe.com/v1/checkout/sessions' => Http::response([
+                'id' => 'cs_should_not_be_created',
+                'url' => 'https://checkout.stripe.com/pay/cs_should_not_be_created',
+            ], 200),
+        ]);
+
+        $purchasedPhoto = Photo::create([
+            'kindergarten_id' => $this->kindergarten->id,
+            'album_id' => $this->album->id,
+            'storage_path' => 'photos/originals/purchased-visible.jpg',
+            'preview_path' => 'photos/previews/purchased-visible.jpg',
+            'price' => 1400,
+            'file_key' => 'purchased-visible-photo',
+            'preview_status' => 'ready',
+            'uploaded_by_staff_id' => $this->staff->id,
+        ]);
+        $purchasedPhoto->taggedChildren()->sync([$this->linkedChild->id]);
+
+        $paidOrder = Order::create([
+            'guardian_id' => $this->guardian->id,
+            'kindergarten_id' => $this->kindergarten->id,
+            'status' => 'paid',
+            'total_amount' => 1400,
+            'platform_fee_amount' => 300,
+        ]);
+        $paidOrderItem = OrderItem::create([
+            'order_id' => $paidOrder->id,
+            'photo_id' => $purchasedPhoto->id,
+            'price' => 1400,
+        ]);
+        Entitlement::create([
+            'order_item_id' => $paidOrderItem->id,
+            'guardian_id' => $this->guardian->id,
+            'photo_id' => $purchasedPhoto->id,
+            'granted_at' => now(),
+        ]);
+
+        $response = $this->withHeaders($this->guardianAuthHeaders())
+            ->postJson('/guardian/purchases/checkout-session', [
+                'photo_ids' => [$this->visiblePhoto->id, $purchasedPhoto->id],
+                'checkout_amount' => 2600,
+                'success_url' => 'https://example.com/success',
+                'cancel_url' => 'https://example.com/cancel',
+            ]);
+
+        $response->assertStatus(409)
+            ->assertJsonPath('code', 'ORDER_ALREADY_PAID_OR_CLOSED');
+
+        $this->assertDatabaseMissing('orders', [
+            'guardian_id' => $this->guardian->id,
+            'status' => 'pending',
+        ]);
+        $this->assertDatabaseMissing('order_items', [
+            'photo_id' => $this->visiblePhoto->id,
+        ]);
+        Http::assertNothingSent();
+    }
+
     public function test_platform_fee_uses_rate_when_within_min_max_bounds(): void
     {
         config()->set('purchase.platform_fee_rate', 0.1);
