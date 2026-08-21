@@ -94,6 +94,8 @@ class ProcessUploadBatchJob implements ShouldQueue
                         ],
                     );
 
+                    $photo->taggedChildren()->sync($uploadRequest->child_ids ?? []);
+
                     $job->forceFill([
                         'photo_id' => $photo->id,
                         'status' => 'metadata_persisted',

@@ -186,6 +186,7 @@ async function uploadBatch(): Promise<void> {
       method: "POST",
       body,
     });
+    isUploadOpen.value = false;
     pollBatch(batch.value.batch_id);
   } catch (error) {
     const normalized = normalizeError(error);
@@ -331,6 +332,7 @@ onBeforeUnmount(stopPolling);
               v-model="filters.album_id"
               :items="albumFilterOptions"
               value-key="value"
+              class="w-full"
             />
           </UFormField>
           <UFormField label="園児">
@@ -338,16 +340,18 @@ onBeforeUnmount(stopPolling);
               v-model="filters.child_id"
               :items="childFilterOptions"
               value-key="value"
+              class="w-full"
             />
           </UFormField>
           <UFormField label="価格状態">
-            <USelect v-model="filters.price_status" :items="priceOptions" value-key="value" />
+            <USelect v-model="filters.price_status" :items="priceOptions" value-key="value" class="w-full" />
           </UFormField>
           <UFormField label="プレビュー状態">
             <USelect
               v-model="filters.preview_status"
               :items="previewOptions"
               value-key="value"
+              class="w-full"
             />
           </UFormField>
           <UButton
@@ -488,6 +492,7 @@ onBeforeUnmount(stopPolling);
               value-key="value"
               multiple
               placeholder="園児を選択"
+              class="w-full"
             />
           </UFormField>
           <p v-if="selectedFiles.length" class="text-sm text-slate-600">

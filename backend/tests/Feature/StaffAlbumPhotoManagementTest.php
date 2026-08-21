@@ -339,6 +339,7 @@ class StaffAlbumPhotoManagementTest extends TestCase
 
         self::assertSame(Storage::disk('s3')->get($sourcePath), Storage::disk('s3')->get($photo->storage_path));
         self::assertNotSame(Storage::disk('s3')->get($sourcePath), Storage::disk('s3')->get($photo->preview_path));
+        self::assertSame([$this->childA->id], $photo->taggedChildren()->pluck('children.id')->all());
 
         $job->handle();
 
