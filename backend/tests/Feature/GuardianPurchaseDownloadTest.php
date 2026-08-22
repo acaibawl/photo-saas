@@ -14,6 +14,7 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Photo;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
@@ -137,6 +138,43 @@ class GuardianPurchaseDownloadTest extends TestCase
         Storage::disk('s3')->put('photos/previews/visible.jpg', 'preview-visible');
         Storage::disk('s3')->put('photos/previews/hidden.jpg', 'preview-hidden');
         Storage::disk('s3')->put('photos/originals/visible.jpg', 'original-visible');
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+
+        parent::tearDown();
+    }
+
+    public function test_checkout_session_uses_configured_ttl_minutes_for_expires_at(): void
+    {
+        $fixedNow = Carbon::parse('2026-01-01T00:00:00Z');
+        Carbon::setTestNow($fixedNow);
+
+        config()->set('purchase.checkout_session_ttl_minutes', 45);
+
+        Http::fake([
+            'https://api.stripe.com/v1/checkout/sessions' => Http::response([
+                'id' => 'cs_ttl_test',
+                'url' => 'https://checkout.stripe.com/pay/cs_ttl_test',
+            ], 200),
+        ]);
+
+        $response = $this->withHeaders($this->guardianAuthHeaders())
+            ->postJson('/guardian/purchases/checkout-session', [
+                'photo_ids' => [$this->visiblePhoto->id],
+                'checkout_amount' => 1200,
+                'success_url' => 'https://example.com/success',
+                'cancel_url' => 'https://example.com/cancel',
+            ]);
+
+        $response->assertOk();
+
+        $expectedExpiresAt = (string) $fixedNow->clone()->addMinutes(45)->timestamp;
+
+        Http::assertSent(fn ($request): bool => $request->url() === 'https://api.stripe.com/v1/checkout/sessions'
+            && (string) $request['expires_at'] === $expectedExpiresAt);
     }
 
     public function test_guardian_can_create_checkout_session_and_list_orders(): void
@@ -685,7 +723,7 @@ class GuardianPurchaseDownloadTest extends TestCase
         ]);
     }
 
-    public function test_checkout_session_rejects_photo_with_existing_pending_order(): void
+    public function test_checkout_session_force_expires_open_pending_order_and_creates_new_session_immediately(): void
     {
         $pendingOrder = Order::create([
             'guardian_id' => $this->guardian->id,
@@ -693,13 +731,123 @@ class GuardianPurchaseDownloadTest extends TestCase
             'status' => 'pending',
             'total_amount' => 1200,
             'platform_fee_amount' => 300,
-            'stripe_checkout_session_id' => 'cs_pending_123',
+            'stripe_checkout_session_id' => 'cs_open_123',
         ]);
 
         OrderItem::create([
             'order_id' => $pendingOrder->id,
             'photo_id' => $this->visiblePhoto->id,
             'price' => 1200,
+        ]);
+
+        Http::fake([
+            'https://api.stripe.com/v1/checkout/sessions/cs_open_123' => Http::response([
+                'id' => 'cs_open_123',
+                'client_reference_id' => $pendingOrder->id,
+                'status' => 'open',
+                'payment_status' => 'unpaid',
+            ], 200),
+            'https://api.stripe.com/v1/checkout/sessions/cs_open_123/expire' => Http::response([
+                'id' => 'cs_open_123',
+                'status' => 'expired',
+            ], 200),
+            'https://api.stripe.com/v1/checkout/sessions' => Http::response([
+                'id' => 'cs_new_123',
+                'url' => 'https://checkout.stripe.com/pay/cs_new_123',
+            ], 200),
+        ]);
+
+        $response = $this->withHeaders($this->guardianAuthHeaders())
+            ->postJson('/guardian/purchases/checkout-session', [
+                'photo_ids' => [$this->visiblePhoto->id],
+                'checkout_amount' => 1200,
+                'success_url' => 'https://example.com/success',
+                'cancel_url' => 'https://example.com/cancel',
+            ]);
+
+        $response->assertOk()
+            ->assertJsonPath('checkout_session_id', 'cs_new_123');
+
+        $this->assertDatabaseHas('orders', [
+            'id' => $pendingOrder->id,
+            'status' => 'failed',
+        ]);
+    }
+
+    public function test_checkout_session_auto_resolves_stale_pending_order_expired_on_stripe_side(): void
+    {
+        $staleOrder = Order::create([
+            'guardian_id' => $this->guardian->id,
+            'kindergarten_id' => $this->kindergarten->id,
+            'status' => 'pending',
+            'total_amount' => 1200,
+            'platform_fee_amount' => 300,
+            'stripe_checkout_session_id' => 'cs_stale_123',
+        ]);
+        $staleOrder->forceFill([
+            'created_at' => now()->subMinutes(40),
+            'updated_at' => now()->subMinutes(40),
+        ])->save();
+
+        OrderItem::create([
+            'order_id' => $staleOrder->id,
+            'photo_id' => $this->visiblePhoto->id,
+            'price' => 1200,
+        ]);
+
+        Http::fake([
+            'https://api.stripe.com/v1/checkout/sessions/cs_stale_123' => Http::response([
+                'id' => 'cs_stale_123',
+                'client_reference_id' => $staleOrder->id,
+                'status' => 'expired',
+                'payment_status' => 'unpaid',
+            ], 200),
+            'https://api.stripe.com/v1/checkout/sessions' => Http::response([
+                'id' => 'cs_new_123',
+                'url' => 'https://checkout.stripe.com/pay/cs_new_123',
+            ], 200),
+        ]);
+
+        $response = $this->withHeaders($this->guardianAuthHeaders())
+            ->postJson('/guardian/purchases/checkout-session', [
+                'photo_ids' => [$this->visiblePhoto->id],
+                'checkout_amount' => 1200,
+                'success_url' => 'https://example.com/success',
+                'cancel_url' => 'https://example.com/cancel',
+            ]);
+
+        $response->assertOk()
+            ->assertJsonPath('checkout_session_id', 'cs_new_123');
+
+        $this->assertDatabaseHas('orders', [
+            'id' => $staleOrder->id,
+            'status' => 'failed',
+        ]);
+    }
+
+    public function test_checkout_session_still_blocked_when_pending_order_payment_already_succeeded(): void
+    {
+        $pendingOrder = Order::create([
+            'guardian_id' => $this->guardian->id,
+            'kindergarten_id' => $this->kindergarten->id,
+            'status' => 'pending',
+            'total_amount' => 1200,
+            'platform_fee_amount' => 300,
+            'stripe_checkout_session_id' => 'cs_recent_123',
+        ]);
+        $pendingOrder->items()->create([
+            'photo_id' => $this->visiblePhoto->id,
+            'price' => 1200,
+        ]);
+
+        Http::fake([
+            'https://api.stripe.com/v1/checkout/sessions/cs_recent_123' => Http::response([
+                'id' => 'cs_recent_123',
+                'client_reference_id' => $pendingOrder->id,
+                'status' => 'complete',
+                'payment_status' => 'paid',
+                'payment_intent' => 'pi_recent_123',
+            ], 200),
         ]);
 
         $response = $this->withHeaders($this->guardianAuthHeaders())
@@ -712,6 +860,16 @@ class GuardianPurchaseDownloadTest extends TestCase
 
         $response->assertStatus(409)
             ->assertJsonPath('code', 'ORDER_ALREADY_PAID_OR_CLOSED');
+
+        $this->assertDatabaseHas('orders', [
+            'id' => $pendingOrder->id,
+            'status' => 'paid',
+        ]);
+
+        $this->assertDatabaseHas('entitlements', [
+            'guardian_id' => $this->guardian->id,
+            'photo_id' => $this->visiblePhoto->id,
+        ]);
     }
 
     /**

@@ -44,6 +44,9 @@ final class GuardianPurchaseService
     ): array {
         $uniquePhotoIds = array_values(array_unique(array_map(static fn (mixed $photoId): string => (string) $photoId, $photoIds)));
 
+        // 同じ写真へのpending注文があれば、Stripe通信をDBロック外で行い先に解消しておく
+        $this->resolvePendingOrdersBlockingPhotos($guardian, $uniquePhotoIds);
+
         $pendingCheckout = DB::transaction(function () use ($guardian, $uniquePhotoIds, $checkoutAmount): array {
             Guardian::query()
                 ->whereKey($guardian->id)
@@ -187,32 +190,39 @@ final class GuardianPurchaseService
             return null;
         }
 
+        return $this->syncPendingOrderWithStripe($order);
+    }
+
+    /**
+     * Stripe側の最新状態をOrderへ反映する。Webhook到達待ちの間や到達漏れ時の補完に使う
+     */
+    public function syncPendingOrderWithStripe(Order $order): Order
+    {
         if ($order->status !== 'pending' || ! is_string($order->stripe_checkout_session_id) || trim($order->stripe_checkout_session_id) === '') {
             return $order;
         }
 
         $checkoutSession = $this->retrieveStripeCheckoutSession($order->stripe_checkout_session_id);
         $checkoutOrderId = data_get($checkoutSession, 'client_reference_id');
-        $paymentStatus = data_get($checkoutSession, 'payment_status');
 
         if ($checkoutOrderId !== $order->id) {
             return $order;
         }
 
-        if ($paymentStatus !== 'paid') {
-            return $order;
+        if (data_get($checkoutSession, 'payment_status') === 'paid') {
+            $this->orderFulfillmentService->fulfillPaidCheckoutSession(
+                $order->id,
+                data_get($checkoutSession, 'id'),
+                data_get($checkoutSession, 'payment_intent'),
+            );
+        } elseif (data_get($checkoutSession, 'status') === 'expired') {
+            $this->markOrderAsFailed($order);
         }
-
-        $this->orderFulfillmentService->fulfillPaidCheckoutSession(
-            $order->id,
-            data_get($checkoutSession, 'id'),
-            data_get($checkoutSession, 'payment_intent'),
-        );
 
         return Order::query()
             ->with(['items.photo.album'])
             ->whereKey($order->id)
-            ->first();
+            ->first() ?? $order;
     }
 
     public function cancelCheckoutSession(Guardian $guardian, string $orderId): ?Order
@@ -227,13 +237,26 @@ final class GuardianPurchaseService
             return null;
         }
 
+        $this->forceResolvePendingOrder($order);
+
+        return Order::query()
+            ->with(['items.photo.album'])
+            ->whereKey($order->id)
+            ->first();
+    }
+
+    /**
+     * pending注文をStripe側と強制的に確定させる。open状態なら即座にexpireを要求する
+     */
+    private function forceResolvePendingOrder(Order $order): void
+    {
         if ($order->status !== 'pending' || ! is_string($order->stripe_checkout_session_id) || trim($order->stripe_checkout_session_id) === '') {
-            return $order;
+            return;
         }
 
         $checkoutSession = $this->retrieveStripeCheckoutSession($order->stripe_checkout_session_id);
         if (data_get($checkoutSession, 'client_reference_id') !== $order->id) {
-            return $order;
+            return;
         }
 
         if (data_get($checkoutSession, 'payment_status') === 'paid') {
@@ -251,11 +274,6 @@ final class GuardianPurchaseService
         } elseif (data_get($checkoutSession, 'status') === 'expired') {
             $this->markOrderAsFailed($order);
         }
-
-        return Order::query()
-            ->with(['items.photo.album'])
-            ->whereKey($order->id)
-            ->first();
     }
 
     public function listPurchasedPhotos(
@@ -345,9 +363,51 @@ final class GuardianPurchaseService
             ->update(['status' => 'failed']);
     }
 
+    /**
+     * @param  array<int, string>  $photoIds
+     */
+    private function resolvePendingOrdersBlockingPhotos(Guardian $guardian, array $photoIds): void
+    {
+        if ($photoIds === []) {
+            return;
+        }
+
+        $blockingOrderIds = OrderItem::query()
+            ->join('orders', 'orders.id', '=', 'order_items.order_id')
+            ->where('orders.guardian_id', $guardian->id)
+            ->where('orders.status', 'pending')
+            ->whereIn('order_items.photo_id', $photoIds)
+            ->pluck('orders.id')
+            ->unique();
+
+        if ($blockingOrderIds->isEmpty()) {
+            return;
+        }
+
+        $blockingOrders = Order::query()->whereIn('id', $blockingOrderIds)->get();
+
+        foreach ($blockingOrders as $blockingOrder) {
+            try {
+                $this->forceResolvePendingOrder($blockingOrder);
+            } catch (\Throwable $exception) {
+                Log::warning('Failed to resolve pending order blocking repurchase', [
+                    'order_id' => $blockingOrder->id,
+                    'exception' => $exception->getMessage(),
+                ]);
+            }
+        }
+    }
+
     private function withCheckoutOrderId(string $url, string $orderId): string
     {
         return Uri::of($url)->withQuery(['order_id' => $orderId])->value();
+    }
+
+    private function checkoutSessionExpiresAt(): int
+    {
+        $ttlMinutes = (int) config('purchase.checkout_session_ttl_minutes');
+
+        return now()->addMinutes($ttlMinutes)->timestamp;
     }
 
     private function retrieveStripeCheckoutSession(string $checkoutSessionId): array
@@ -465,6 +525,7 @@ final class GuardianPurchaseService
                 'success_url' => $successUrl,
                 'cancel_url' => $cancelUrl,
                 'client_reference_id' => $order->id,
+                'expires_at' => $this->checkoutSessionExpiresAt(),
                 'metadata' => [
                     'order_id' => $order->id,
                     'guardian_id' => $order->guardian_id,
