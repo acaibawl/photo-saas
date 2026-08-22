@@ -14,6 +14,7 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Photo;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
@@ -137,6 +138,43 @@ class GuardianPurchaseDownloadTest extends TestCase
         Storage::disk('s3')->put('photos/previews/visible.jpg', 'preview-visible');
         Storage::disk('s3')->put('photos/previews/hidden.jpg', 'preview-hidden');
         Storage::disk('s3')->put('photos/originals/visible.jpg', 'original-visible');
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+
+        parent::tearDown();
+    }
+
+    public function test_checkout_session_uses_configured_ttl_minutes_for_expires_at(): void
+    {
+        $fixedNow = Carbon::parse('2026-01-01T00:00:00Z');
+        Carbon::setTestNow($fixedNow);
+
+        config()->set('purchase.checkout_session_ttl_minutes', 45);
+
+        Http::fake([
+            'https://api.stripe.com/v1/checkout/sessions' => Http::response([
+                'id' => 'cs_ttl_test',
+                'url' => 'https://checkout.stripe.com/pay/cs_ttl_test',
+            ], 200),
+        ]);
+
+        $response = $this->withHeaders($this->guardianAuthHeaders())
+            ->postJson('/guardian/purchases/checkout-session', [
+                'photo_ids' => [$this->visiblePhoto->id],
+                'checkout_amount' => 1200,
+                'success_url' => 'https://example.com/success',
+                'cancel_url' => 'https://example.com/cancel',
+            ]);
+
+        $response->assertOk();
+
+        $expectedExpiresAt = (string) $fixedNow->clone()->addMinutes(45)->timestamp;
+
+        Http::assertSent(fn ($request): bool => $request->url() === 'https://api.stripe.com/v1/checkout/sessions'
+            && (string) $request['expires_at'] === $expectedExpiresAt);
     }
 
     public function test_guardian_can_create_checkout_session_and_list_orders(): void

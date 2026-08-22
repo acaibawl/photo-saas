@@ -405,8 +405,7 @@ final class GuardianPurchaseService
 
     private function checkoutSessionExpiresAt(): int
     {
-        // Stripeは30分〜24時間の範囲のみ許容する
-        $ttlMinutes = min(max((int) config('purchase.checkout_session_ttl_minutes'), 30), 1440);
+        $ttlMinutes = (int) config('purchase.checkout_session_ttl_minutes');
 
         return now()->addMinutes($ttlMinutes)->timestamp;
     }

@@ -54,7 +54,7 @@
   - Stripeで進行中（`status=open`）と判明した場合は、その場でStripeへ明示的にセッションのキャンセル（`expire`）をリクエストし、注文を `failed` にした上で新しい購入セッションを作成する。
   - 既にStripe側で期限切れ（`status=expired`）の場合も同様に `failed` にしてから新しい購入セッションを作成する。
   - Stripe通信に失敗した場合は安全側に倒し、既存の `pending` 状態のままブロックする（`409 ORDER_ALREADY_PAID_OR_CLOSED`）。
-- Webhook到達漏れに備え、`orders:expire-stale-pending` コマンド（`everyFiveMinutes` でスケジュール登録）が `checkout_session_ttl_minutes` 以上前に作成された `pending` 注文をStripe側と定期的に同期する（こちらは強制キャンセルはせず、Stripe側で既に確定した状態のみ反映する）。
+- Webhook到達漏れに備え、`orders:expire-stale-pending` コマンド（`everyFiveMinutes` でスケジュール登録）が `checkout_session_ttl_minutes` に5分の猶予を加えた時間以上前に作成された `pending` 注文をStripe側と定期的に同期する（こちらは強制キャンセルはせず、Stripe側で既に確定した状態のみ反映する）。
 
 ## 2) 注文一覧
 
