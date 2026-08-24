@@ -106,8 +106,9 @@ Stripe Dashboardのテストモードと本番モードそれぞれで、Webhook
 
    ```bash
    stripe listen \
-     --events checkout.session.completed,checkout.session.expired,account.updated \
-     --forward-to https://backend.local/public/stripe/webhook
+  --api-key ${STRIPE_SECRET} \
+  --events checkout.session.completed,checkout.session.expired,account.updated \
+  --forward-to https://backend.local/public/stripe/webhook
    ```
 
    起動すると `Ready! ... Your webhook signing secret is whsec_...` と表示される。この値を `backend/.env` の `STRIPE_WEBHOOK_SECRET` に設定し、設定キャッシュをクリアする。
