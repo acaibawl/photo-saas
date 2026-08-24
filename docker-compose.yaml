@@ -25,6 +25,8 @@ services:
   mailpit:
     image: axllent/mailpit:latest
     container_name: photo-saas-mailpit
+    environment:
+      TZ: Asia/Tokyo
     ports:
       - "8025:8025"
       - "1025:1025"
@@ -42,6 +44,8 @@ services:
       - ./containers/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./containers/nginx/conf.d:/etc/nginx/conf.d:ro
       - ./containers/nginx/certs:/etc/nginx/certs
+    environment:
+      TZ: Asia/Tokyo
     depends_on:
       - php
       - minio
@@ -96,6 +100,8 @@ services:
     image: redis:8.2-bookworm
     container_name: photo-saas-redis
     command: ["redis-server", "--appendonly", "yes"]
+    environment:
+      TZ: Asia/Tokyo
     ports:
       - "6379:6379"
     volumes:
@@ -117,7 +123,9 @@ services:
       - "9001:9001"
     volumes:
       - minio-data:/data
+      - /usr/share/zoneinfo:/usr/share/zoneinfo:ro
     environment:
+      TZ: Asia/Tokyo
       MINIO_ROOT_USER: minio
       MINIO_ROOT_PASSWORD: minio-password
       MINIO_API_CORS_ALLOW_ORIGIN: https://frontend.local
@@ -133,9 +141,13 @@ services:
   minio-init:
     image: minio/mc:latest
     container_name: photo-saas-minio-init
+    volumes:
+      - /usr/share/zoneinfo:/usr/share/zoneinfo:ro
     depends_on:
       minio:
         condition: service_healthy
+    environment:
+      TZ: Asia/Tokyo
     entrypoint: /bin/sh
     command: >-
       -c 'mc alias set local http://minio:9000 minio minio-password
