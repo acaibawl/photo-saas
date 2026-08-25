@@ -3,6 +3,8 @@ definePageMeta({
   middleware: ['staff-auth'],
 })
 
+useHead({ title: 'Stripe Connect 設定' })
+
 type StripeConnectStatus = {
   stripe_account_id: string | null
   charges_enabled: boolean

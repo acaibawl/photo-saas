@@ -5,6 +5,8 @@ definePageMeta({
   middleware: ['guardian-auth'],
 })
 
+useHead({ title: '決済結果' })
+
 type CheckoutStatus = 'success' | 'cancel'
 
 const MAX_POLL_ATTEMPTS = 5

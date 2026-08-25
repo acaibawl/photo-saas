@@ -6,6 +6,7 @@ export default defineNuxtConfig({
   css: ['~/assets/css/main.css'],
   app: {
     head: {
+      titleTemplate: 'そだちアルバム | %s',
       link: [
         { rel: 'apple-touch-icon', type: 'image/png', href: '/apple-touch-icon-180x180.png' },
         { rel: 'icon', type: 'image/png', href: '/icon-192x192.png' },

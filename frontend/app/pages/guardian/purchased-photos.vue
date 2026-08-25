@@ -6,6 +6,8 @@ definePageMeta({
   middleware: ['guardian-auth'],
 })
 
+useHead({ title: '購入済み写真' })
+
 type GuardianPhotoAlbum = {
   album_id: string
   title: string

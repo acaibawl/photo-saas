@@ -6,6 +6,8 @@ definePageMeta({
   middleware: ['staff-guest'],
 })
 
+useHead({ title: '園スタッフ ログイン' })
+
 const { login, fetchMe } = useStaffAuth()
 const { normalizeError } = useApiError()
 

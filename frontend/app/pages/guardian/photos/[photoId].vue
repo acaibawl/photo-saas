@@ -5,6 +5,8 @@ definePageMeta({
   middleware: ['guardian-auth'],
 })
 
+useHead({ title: '写真詳細' })
+
 type GuardianPhotoDetailChild = {
   child_id: string
   name: string

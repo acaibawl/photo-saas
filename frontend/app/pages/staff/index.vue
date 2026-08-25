@@ -3,6 +3,8 @@ definePageMeta({
   middleware: ['staff-auth'],
 })
 
+useHead({ title: 'ダッシュボード' })
+
 type SalesAvailability = {
   sales_enabled: boolean
   reason_code: string | null

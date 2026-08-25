@@ -5,6 +5,8 @@ definePageMeta({
   middleware: ['guardian-auth'],
 })
 
+useHead({ title: '保護者ホーム' })
+
 const authStore = useAuthStore()
 const { logout, fetchChildren } = useGuardianAuth()
 const { normalizeError } = useApiError()
