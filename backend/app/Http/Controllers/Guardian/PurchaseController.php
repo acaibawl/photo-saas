@@ -138,7 +138,7 @@ class PurchaseController extends Controller
                 'purchased_at' => $entitlement->granted_at?->toIso8601String(),
                 'event_date' => $entitlement->photo?->album?->event_date?->toDateString(),
                 'preview_url' => $service->previewUrlForPhoto($entitlement->photo?->preview_path),
-                'download_file_extension' => pathinfo((string) ($entitlement->photo?->storage_path ?? ''), PATHINFO_EXTENSION) ?: null,
+                'download_file_extension' => pathinfo((string) ($entitlement->photo?->storage_path), PATHINFO_EXTENSION) ?: null,
             ])->values()->all(),
             'meta' => [
                 'current_page' => $paginator->currentPage(),

@@ -48,11 +48,15 @@ const albumOptions = computed(() => [
 const hasPagination = computed(() => total.value > PER_PAGE)
 
 function sanitizeFilenamePart(value: string): string {
-  return value
-    .replace(/[\\/:*?"<>|]/g, '-')
-    .replace(/[\u0000-\u001f\u007f]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
+  const withoutForbiddenChars = value.replace(/[\\/:*?"<>|]/g, '-')
+  const withoutControlChars = Array.from(withoutForbiddenChars)
+    .filter((char) => {
+      const code = char.charCodeAt(0)
+      return code >= 0x20 && code !== 0x7f
+    })
+    .join('')
+
+  return withoutControlChars.replace(/\s+/g, ' ').trim()
 }
 
 function buildDownloadFilename(photo: GuardianPurchasedPhoto): string {
