@@ -7,6 +7,7 @@ type ApiFetchOptions = {
   body?: BodyInit | Record<string, unknown> | null
   query?: Record<string, string | number | boolean | undefined>
   headers?: HeadersInit
+  responseType?: 'json' | 'text' | 'blob' | 'arrayBuffer'
   skipAuthRetry?: boolean
   credentials?: 'include' | 'omit'
 }

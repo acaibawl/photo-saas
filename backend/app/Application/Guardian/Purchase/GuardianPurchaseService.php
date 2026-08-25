@@ -16,12 +16,10 @@ use App\Models\OrderItem;
 use App\Models\Photo;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
-use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Uri;
 use RuntimeException;
 
@@ -310,7 +308,7 @@ final class GuardianPurchaseService
         return $query->paginate($perPage, ['*'], 'page', $page);
     }
 
-    public function downloadUrl(Guardian $guardian, string $photoId): array
+    public function downloadablePhoto(Guardian $guardian, string $photoId): Photo
     {
         $entitlement = Entitlement::query()
             ->with('photo')
@@ -318,20 +316,14 @@ final class GuardianPurchaseService
             ->where('photo_id', $photoId)
             ->first();
 
-        $storagePath = $entitlement instanceof Entitlement ? data_get($entitlement, 'photo.storage_path') : null;
+        $photo = $entitlement instanceof Entitlement ? $entitlement->photo : null;
+        $storagePath = $photo instanceof Photo ? $photo->storage_path : null;
 
-        if (! $entitlement instanceof Entitlement || $storagePath === null || $storagePath === '') {
+        if (! $photo instanceof Photo || $storagePath === null || $storagePath === '') {
             throw new EntitlementNotFoundException;
         }
 
-        $expiresAt = now()->addMinutes(10);
-        /** @var FilesystemAdapter $filesystem */
-        $filesystem = Storage::disk('s3');
-
-        return [
-            'download_url' => $filesystem->temporaryUrl($storagePath, $expiresAt),
-            'expires_at' => $expiresAt->toIso8601String(),
-        ];
+        return $photo;
     }
 
     public function previewUrlForPhoto(?string $path): ?string
@@ -384,6 +376,7 @@ final class GuardianPurchaseService
             return;
         }
 
+        /** @var EloquentCollection<int, Order> $blockingOrders */
         $blockingOrders = Order::query()->whereIn('id', $blockingOrderIds)->get();
 
         foreach ($blockingOrders as $blockingOrder) {

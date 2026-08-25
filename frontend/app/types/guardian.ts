@@ -33,10 +33,12 @@ export type CheckoutSessionResponse = {
 export type GuardianPurchasedPhoto = {
   photo_id: string
   album_id: string | null
+  album_title: string | null
   downloadable: boolean
   purchased_at: string | null
   event_date: string | null
   preview_url: string | null
+  download_file_extension: string | null
 }
 
 export type GuardianPurchasedPhotoPageResponse = {

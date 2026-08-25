@@ -629,26 +629,27 @@ class GuardianPurchaseDownloadTest extends TestCase
             ->assertJsonPath('meta.total', 1)
             ->assertJsonPath('data.0.photo_id', $this->visiblePhoto->id)
             ->assertJsonPath('data.0.album_id', $this->album->id)
+            ->assertJsonPath('data.0.album_title', '夏祭り')
             ->assertJsonPath('data.0.downloadable', true)
-            ->assertJsonPath('data.0.event_date', '2026-08-01');
+            ->assertJsonPath('data.0.event_date', '2026-08-01')
+            ->assertJsonPath('data.0.download_file_extension', 'jpg');
 
         $downloadResponse = $this->withHeaders($this->guardianAuthHeaders())
-            ->postJson('/guardian/photos/'.$this->visiblePhoto->id.'/download-url');
+            ->get('/guardian/photos/'.$this->visiblePhoto->id.'/download');
 
-        $downloadResponse->assertOk()
-            ->assertJsonStructure(['download_url', 'expires_at']);
-
-        $downloadUrl = $downloadResponse->json('download_url');
-        $expiresAt = $downloadResponse->json('expires_at');
-
-        $this->assertIsString($downloadUrl);
-        $this->assertMatchesRegularExpression('/^https?:\/\/[^\s]+$/', $downloadUrl);
-
-        $this->assertIsString($expiresAt);
-        $this->assertMatchesRegularExpression('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $expiresAt);
+        $downloadResponse->assertOk();
+        $this->assertStringContainsString(
+            'attachment;',
+            (string) $downloadResponse->headers->get('content-disposition')
+        );
+        $this->assertStringContainsString(
+            'visible-photo.jpg',
+            (string) $downloadResponse->headers->get('content-disposition')
+        );
+        $downloadResponse->assertStreamedContent('original-visible');
 
         $missingDownloadResponse = $this->withHeaders($this->guardianAuthHeaders())
-            ->postJson('/guardian/photos/'.$this->hiddenPhoto->id.'/download-url');
+            ->getJson('/guardian/photos/'.$this->hiddenPhoto->id.'/download');
 
         $missingDownloadResponse->assertStatus(404)
             ->assertJsonPath('code', 'ENTITLEMENT_NOT_FOUND');

@@ -13,6 +13,8 @@ use App\Http\Requests\Guardian\ListGuardianPhotosRequest;
 use App\Models\Guardian;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class PhotoController extends Controller
 {
@@ -144,7 +146,7 @@ class PhotoController extends Controller
         }
     }
 
-    public function downloadUrl(Request $request, string $photoId, GuardianPurchaseService $service): JsonResponse
+    public function download(Request $request, string $photoId, GuardianPurchaseService $service): StreamedResponse|JsonResponse
     {
         $guardian = $request->user('guardian');
 
@@ -156,12 +158,37 @@ class PhotoController extends Controller
         }
 
         try {
-            return response()->json($service->downloadUrl($guardian, $photoId));
+            $photo = $service->downloadablePhoto($guardian, $photoId);
         } catch (EntitlementNotFoundException) {
             return response()->json([
                 'message' => 'Entitlement not found',
                 'code' => 'ENTITLEMENT_NOT_FOUND',
             ], 404);
         }
+
+        $storagePath = (string) $photo->storage_path;
+        $stream = Storage::disk('s3')->readStream($storagePath);
+
+        if (! is_resource($stream)) {
+            return response()->json([
+                'message' => 'Entitlement not found',
+                'code' => 'ENTITLEMENT_NOT_FOUND',
+            ], 404);
+        }
+
+        $extension = pathinfo($storagePath, PATHINFO_EXTENSION);
+        $baseName = trim((string) $photo->file_key) !== '' ? (string) $photo->file_key : $photo->id;
+        $downloadName = $extension !== '' ? $baseName.'.'.$extension : $baseName;
+
+        return response()->streamDownload(function () use ($stream): void {
+            try {
+                fpassthru($stream);
+            } finally {
+                fclose($stream);
+            }
+        }, $downloadName, [
+            'Content-Type' => 'application/octet-stream',
+            'Cache-Control' => 'no-store, private',
+        ]);
     }
 }

@@ -13,7 +13,7 @@
 | 購入セッション作成 | POST | `/guardian/purchases/checkout-session` |
 | 注文一覧 | GET | `/guardian/orders` |
 | 購入済み写真一覧 | GET | `/guardian/purchased-photos` |
-| ダウンロードURL発行 | POST | `/guardian/photos/{photo_id}/download-url` |
+| ダウンロード | GET | `/guardian/photos/{photo_id}/download` |
 
 ## 1) 購入セッション作成
 
@@ -79,9 +79,9 @@
 | data[].created_at | string(datetime) |
 | data[].items | array<object> |
 
-## 3) ダウンロードURL発行
+## 3) ダウンロード
 
-**Method / Path**: `POST /guardian/photos/{photo_id}/download-url`  
+**Method / Path**: `GET /guardian/photos/{photo_id}/download`  
 **Auth**: `auth:guardian`
 
 ### Input
@@ -92,15 +92,13 @@
 
 ### Output（200）
 
-| フィールド | 型 |
-|---|---|
-| download_url | string(url) |
-| expires_at | string(datetime) |
+- バイナリストリーム（`Content-Disposition: attachment`）
 
 ### ドメイン制約
 
 - 判定は `entitlements (guardian_id, photo_id)` の存在で行う。
 - `guardian_child` が解除済みでも entitlement があればダウンロード許可。
+- 原本URLはクライアントへ返却しない。認証済みAPIから直接ストリーム配信する。
 
 ## 4) 購入済み写真一覧
 
@@ -123,10 +121,12 @@
 |---|---|
 | data[].photo_id | string(ULID) |
 | data[].album_id | string(ULID) |
+| data[].album_title | string \/ null |
 | data[].downloadable | boolean |
 | data[].purchased_at | string(datetime) |
 | data[].event_date | string(date) |
 | data[].preview_url | string(url) |
+| data[].download_file_extension | string \/ null |
 | meta.current_page | integer |
 | meta.total | integer |
 
@@ -134,7 +134,7 @@
 
 - 判定は `entitlements (guardian_id, photo_id)` を正とし、`guardian_child` の有効/解除状態に依存しない。
 - `downloadable` はentitlementが有効な写真で常に `true` とする（返却対象をentitlement保有写真に限定するため）。
-- `preview_url` は一覧表示用途の短期URLとし、原本ダウンロードは `POST /guardian/photos/{photo_id}/download-url` で都度発行する。
+- `preview_url` は一覧表示用途の短期URLとし、原本ダウンロードは `GET /guardian/photos/{photo_id}/download` で認証済みAPIから配信する。
 
 ## 共通エラー
 

@@ -11,7 +11,7 @@
 ## 使用API
 
 1. `GET /guardian/purchased-photos`
-2. `POST /guardian/photos/{photoId}/download-url`
+2. `GET /guardian/photos/{photoId}/download`
 
 ## フィルタ
 
@@ -27,8 +27,8 @@
 ## ダウンロードフロー
 
 1. ボタン押下
-2. `POST /guardian/photos/{photoId}/download-url`
-3. 返却された `download_url` へ遷移して保存
+2. `GET /guardian/photos/{photoId}/download` を認証付きで呼び出し
+3. 返却されたバイナリを `撮影日_アルバム名_写真ID.拡張子` 形式で保存
 
 ## 仕様上の重要点
 
@@ -41,6 +41,6 @@
 - `GET /guardian/purchased-photos`
 	- entitlement が1件もない場合は `200` で空配列（`data=[]`）を返す
 	- エラーではなく空状態として扱い、「購入済み写真はまだありません」を表示する
-- `POST /guardian/photos/{photoId}/download-url`
+- `GET /guardian/photos/{photoId}/download`
 	- entitlement 不在の場合は `404 ENTITLEMENT_NOT_FOUND` を返す
 	- entitlement は存在していても `storage_path` が空の場合、現行実装では同じく `404 ENTITLEMENT_NOT_FOUND` を返す
