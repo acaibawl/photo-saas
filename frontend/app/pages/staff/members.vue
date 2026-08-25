@@ -490,10 +490,10 @@ onMounted(initialize)
             </template>
             <form class="grid gap-4 md:grid-cols-[1fr_1fr_1.5fr_auto] md:items-end" @submit.prevent="applyMemberFilters">
               <UFormField label="状態">
-                <USelect v-model="memberFilters.status" :items="statusOptions.filter((option) => option.value)" value-key="value" placeholder="すべて" />
+                <USelect v-model="memberFilters.status" :items="statusOptions.filter((option) => option.value)" value-key="value" placeholder="すべて" class="w-40 md:w-full" />
               </UFormField>
               <UFormField label="ロール">
-                <USelect v-model="memberFilters.role" :items="roleFilterOptions.filter((option) => option.value)" value-key="value" placeholder="すべて" />
+                <USelect v-model="memberFilters.role" :items="roleFilterOptions.filter((option) => option.value)" value-key="value" placeholder="すべて" class="w-40 md:w-full" />
               </UFormField>
               <UFormField label="キーワード">
                 <UInput v-model="memberFilters.keyword" placeholder="氏名・メールアドレス" icon="i-lucide-search" />
