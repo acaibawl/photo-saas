@@ -108,7 +108,7 @@ Route::prefix('/guardian')->middleware('auth:guardian')->group(function (): void
     Route::get('/photos', [GuardianPhotoController::class, 'index']);
     Route::get('/photos/{photoId}', [GuardianPhotoController::class, 'show']);
     Route::post('/photos/{photoId}/preview-url', [GuardianPhotoController::class, 'refreshPreviewUrl']);
-    Route::post('/photos/{photoId}/download-url', [GuardianPhotoController::class, 'downloadUrl']);
+    Route::get('/photos/{photoId}/download', [GuardianPhotoController::class, 'download']);
     Route::post('/purchases/checkout-session', [GuardianPurchaseController::class, 'checkoutSession']);
     Route::post('/orders/{orderId}/sync', [GuardianPurchaseController::class, 'syncOrder'])
         ->middleware('throttle:20,1');

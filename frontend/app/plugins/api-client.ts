@@ -7,6 +7,7 @@ type ApiFetchOptions = {
   body?: BodyInit | Record<string, unknown> | null
   query?: Record<string, string | number | boolean | undefined>
   headers?: HeadersInit
+  responseType?: 'json' | 'text' | 'blob' | 'arrayBuffer'
   skipAuthRetry?: boolean
   credentials?: 'include' | 'omit'
 }
@@ -140,6 +141,7 @@ export default defineNuxtPlugin(() => {
         body: options.body,
         query: options.query,
         headers,
+        responseType: options.responseType,
         credentials: needsCookieCredentials ? 'include' : 'omit',
       })
     } catch (error) {
@@ -170,6 +172,7 @@ export default defineNuxtPlugin(() => {
         body: options.body,
         query: options.query,
         headers: retryHeaders,
+        responseType: options.responseType,
         credentials: needsCookieCredentials ? 'include' : 'omit',
       })
     }

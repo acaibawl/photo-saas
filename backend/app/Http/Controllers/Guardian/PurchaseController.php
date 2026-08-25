@@ -133,10 +133,12 @@ class PurchaseController extends Controller
             'data' => collect($paginator->items())->map(static fn ($entitlement) => [
                 'photo_id' => $entitlement->photo_id,
                 'album_id' => $entitlement->photo?->album_id,
+                'album_title' => $entitlement->photo?->album?->title,
                 'downloadable' => true,
                 'purchased_at' => $entitlement->granted_at?->toIso8601String(),
                 'event_date' => $entitlement->photo?->album?->event_date?->toDateString(),
                 'preview_url' => $service->previewUrlForPhoto($entitlement->photo?->preview_path),
+                'download_file_extension' => pathinfo((string) ($entitlement->photo?->storage_path), PATHINFO_EXTENSION) ?: null,
             ])->values()->all(),
             'meta' => [
                 'current_page' => $paginator->currentPage(),

@@ -47,6 +47,28 @@ const albumOptions = computed(() => [
 ])
 const hasPagination = computed(() => total.value > PER_PAGE)
 
+function sanitizeFilenamePart(value: string): string {
+  const withoutForbiddenChars = value.replace(/[\\/:*?"<>|]/g, '-')
+  const withoutControlChars = Array.from(withoutForbiddenChars)
+    .filter((char) => {
+      const code = char.charCodeAt(0)
+      return code >= 0x20 && code !== 0x7f
+    })
+    .join('')
+
+  return withoutControlChars.replace(/\s+/g, ' ').trim()
+}
+
+function buildDownloadFilename(photo: GuardianPurchasedPhoto): string {
+  const eventDatePart = sanitizeFilenamePart(photo.event_date ?? 'undated')
+  const albumTitlePart = sanitizeFilenamePart(photo.album_title ?? 'album')
+  const photoIdPart = sanitizeFilenamePart(photo.photo_id.slice(-8))
+  const extension = sanitizeFilenamePart(photo.download_file_extension ?? '')
+  const baseName = `${eventDatePart}_${albumTitlePart}_${photoIdPart}`
+
+  return extension !== '' ? `${baseName}.${extension}` : baseName
+}
+
 async function unauthorized(): Promise<void> {
   await logout().catch(() => undefined)
   await navigateTo('/guardian/login')
@@ -146,10 +168,18 @@ async function download(photo: GuardianPurchasedPhoto): Promise<void> {
   downloadingPhotoId.value = photo.photo_id
 
   try {
-    const response = await $api<{ download_url: string, expires_at: string }>(`/guardian/photos/${photo.photo_id}/download-url`, {
-      method: 'POST',
+    const blob = await $api<Blob>(`/guardian/photos/${photo.photo_id}/download`, {
+      responseType: 'blob',
     })
-    window.location.href = response.download_url
+
+    const objectUrl = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = objectUrl
+    anchor.download = buildDownloadFilename(photo)
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+    URL.revokeObjectURL(objectUrl)
   } catch (error) {
     const normalized = normalizeError(error)
 
@@ -158,7 +188,7 @@ async function download(photo: GuardianPurchasedPhoto): Promise<void> {
       return
     }
 
-    if (normalized.code === 'ENTITLEMENT_NOT_FOUND') {
+    if (normalized.status === 404) {
       downloadError.value = 'この写真はダウンロードできません。'
     } else {
       downloadError.value = normalized.message
