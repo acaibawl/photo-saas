@@ -1,2 +1,7 @@
 User-Agent: *
-Disallow:
+Allow: /
+Disallow: /staff
+Disallow: /guardian
+Disallow: /invitations
+Disallow: /staff/invitations
+Sitemap: /sitemap.xml
