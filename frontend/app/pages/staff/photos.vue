@@ -12,6 +12,8 @@ import type {
 
 definePageMeta({ middleware: ["staff-auth"] });
 
+useHead({ title: "写真管理" });
+
 const { $api } = useNuxtApp();
 const { normalizeError } = useApiError();
 const { logout } = useStaffAuth();

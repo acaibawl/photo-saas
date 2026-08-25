@@ -1,5 +1,6 @@
 <script setup lang="ts">
 definePageMeta({ middleware: ["staff-auth"] });
+useHead({ title: "園児詳細" });
 type Child = {
   id: string;
   class_id: string;

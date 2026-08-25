@@ -5,6 +5,8 @@ definePageMeta({
   middleware: ['guardian-auth'],
 })
 
+useHead({ title: '注文履歴' })
+
 const PER_PAGE = 20
 
 const statusOptions = [

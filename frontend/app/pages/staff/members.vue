@@ -3,6 +3,8 @@ definePageMeta({
   middleware: ['staff-auth'],
 })
 
+useHead({ title: 'スタッフ管理' })
+
 type StaffRole = 'owner' | 'staff'
 type StaffStatus = 'active' | 'inactive'
 type InvitationStatus = 'pending' | 'accepted' | 'revoked' | 'expired'

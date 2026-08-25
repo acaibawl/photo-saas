@@ -6,6 +6,8 @@ definePageMeta({
   middleware: ['guardian-guest'],
 })
 
+useHead({ title: '保護者ログイン' })
+
 const { login } = useGuardianAuth()
 const { normalizeError } = useApiError()
 

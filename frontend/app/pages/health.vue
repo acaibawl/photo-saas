@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
+useHead({ title: 'ヘルスチェック' })
+
 const HEALTHCHECK_URL = 'https://backend.local/health'
 
 type HealthResponse = string | Record<string, unknown> | null

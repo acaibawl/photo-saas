@@ -3,6 +3,8 @@ definePageMeta({
   middleware: ['staff-auth'],
 })
 
+useHead({ title: '組（クラス）管理' })
+
 type ChildClass = {
   id: string
   kindergarten_id: string
